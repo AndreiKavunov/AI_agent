@@ -1,9 +1,9 @@
 package com.example.aiagent.data.giga
 
 import android.util.Log
+import com.example.aiagent.BuildConfig
 import com.example.aiagent.data.response.AgentResponse
 import com.example.aiagent.domain.ChatRepository
-import com.example.iifirst.BuildConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.engine.cio.endpoint
@@ -37,6 +37,20 @@ class GigaChatRepository : ChatRepository {
     // Кеш токена в памяти
     private var cachedToken: String? = null
     private var tokenExpiryTime: Long = 0
+
+    // История сообщений - сохраняется в синглтоне
+    private val messageHistory = mutableListOf<GigaMessage>()
+
+    companion object {
+        @Volatile
+        private var instance: GigaChatRepository? = null
+
+        fun getInstance(): GigaChatRepository {
+            return instance ?: synchronized(this) {
+                instance ?: GigaChatRepository().also { instance = it }
+            }
+        }
+    }
 
     private val jsonParser = Json {
         ignoreUnknownKeys = true
@@ -97,31 +111,39 @@ class GigaChatRepository : ChatRepository {
 
     override suspend fun sendMessage(message: String): AgentResponse {
         Log.d(TAG, "🚀 Начинаем запрос для: \"${message.take(50)}\"")
+        Log.d(TAG, "📚 Текущий размер истории: ${messageHistory.size} сообщений")
 
         return withContext(Dispatchers.IO) {
             val client = createClient()
             try {
-                // 1. ПОЛУЧАЕМ ТОКЕН (с кешированием)
+                // 1. ПОЛУЧАЕМ ТОКЕН
                 Log.d(TAG, "1. 📡 Получаю Access Token...")
                 val accessToken = getAccessToken(client)
 
-                // 2. ЗАПРАШИВАЕМ GIGACHAT
-                Log.d(TAG, "2. 🤖 Запрос к GigaChat API...")
+                // 2. ДОБАВЛЯЕМ СИСТЕМНОЕ СООБЩЕНИЕ, ЕСЛИ ИСТОРИЯ ПУСТА
+                if (messageHistory.isEmpty()) {
+                    val systemMessage = GigaMessage(
+                        role = "system",
+                        content = "Ты полезный ассистент. Отвечай кратко и по делу на русском языке."
+                    )
+                    messageHistory.add(systemMessage)
+                    Log.d(TAG, "   ✨ Добавлено системное сообщение")
+                }
+
+                // 3. ДОБАВЛЯЕМ СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ В ИСТОРИЮ
+                val userMessage = GigaMessage(role = "user", content = message)
+                messageHistory.add(userMessage)
+                Log.d(TAG, "   📝 Добавлено сообщение пользователя")
+
+                // 4. ФОРМИРУЕМ ЗАПРОС С ПОЛНОЙ ИСТОРИЕЙ
+                Log.d(TAG, "2. 🤖 Запрос к GigaChat API с ${messageHistory.size} сообщениями...")
 
                 val chatRequest = ChatRequest(
                     model = "GigaChat",
-                    messages = listOf(
-                        GigaMessage(
-                            role = "system",
-                            content = "Ты полезный ассистент. Отвечай кратко и по делу на русском языке."
-                        ),
-                        GigaMessage(
-                            role = "user",
-                            content = message
-                        )
-                    ),
+                    messages = messageHistory.toList(), // Отправляем всю историю
                     temperature = 0.7,
-                    max_tokens = 1000
+                    max_tokens = 1000,
+                    stream = false
                 )
 
                 val chatResponse = client.post(
@@ -138,17 +160,25 @@ class GigaChatRepository : ChatRepository {
                 if (!chatResponse.status.isSuccess()) {
                     val error = chatResponse.bodyAsText()
                     Log.e(TAG, "❌ Ошибка GigaChat: $error")
+
+                    // Удаляем сообщение пользователя из истории в случае ошибки
+                    messageHistory.removeLast()
                     throw Exception("Ошибка GigaChat: ${chatResponse.status}")
                 }
 
                 val responseJson = chatResponse.bodyAsText()
-                Log.d(TAG, "   📄 Ответ чата: ${responseJson.take(200)}...")
+                Log.d(TAG, "   📄 Ответ получен, парсинг...")
 
                 val chatResponseObj = jsonParser.decodeFromString<ChatResponse>(responseJson)
                 val answer = chatResponseObj.choices.firstOrNull()?.message?.content
                     ?: throw Exception("Ответ не найден в JSON")
 
+                // 5. ДОБАВЛЯЕМ ОТВЕТ АССИСТЕНТА В ИСТОРИЮ
+                val assistantMessage = GigaMessage(role = "assistant", content = answer)
+                messageHistory.add(assistantMessage)
+
                 Log.d(TAG, "✅ Успех! Ответ получен (${answer.length} символов)")
+                Log.d(TAG, "📚 История теперь содержит ${messageHistory.size} сообщений")
 
                 AgentResponse(
                     text = formatAnswer(answer),
@@ -158,13 +188,107 @@ class GigaChatRepository : ChatRepository {
             } catch (e: Exception) {
                 Log.e(TAG, "💥 Ошибка: ${e.javaClass.simpleName}: ${e.message}")
                 e.printStackTrace()
-
-                throw e // Пробрасываем исключение дальше
-
+                throw e
             } finally {
                 client.close()
                 Log.d(TAG, "🔚 HTTP клиент закрыт")
             }
+        }
+    }
+
+    /**
+     * Отправка сообщения с кастомным системным промптом
+     */
+    suspend fun sendMessageWithCustomPrompt(message: String, systemPrompt: String): AgentResponse {
+        setSystemPrompt(systemPrompt)
+        return sendMessage(message)
+    }
+
+    /**
+     * Установка или изменение системного промпта
+     */
+    fun setSystemPrompt(prompt: String) {
+        // Удаляем существующее системное сообщение
+        removeSystemMessages()
+
+        // Добавляем новое системное сообщение в начало
+        messageHistory.add(0, GigaMessage(role = "system", content = prompt))
+
+        Log.d(TAG, "🔄 Системный промпт обновлен")
+    }
+
+    /**
+     * Получение полной истории сообщений
+     */
+    fun getFullHistory(): List<GigaMessage> {
+        return messageHistory.toList()
+    }
+
+    /**
+     * Получение истории диалога (без системных сообщений)
+     */
+    fun getConversationHistory(): List<GigaMessage> {
+        return messageHistory.filter { it.role != "system" }
+    }
+
+    /**
+     * Получение количества сообщений в истории
+     */
+    fun getHistorySize(): Int {
+        return messageHistory.size
+    }
+
+    /**
+     * Очистка истории сообщений (кроме системного промпта)
+     */
+    fun clearConversationHistory() {
+        // Сохраняем системные сообщения
+        val systemMessages = messageHistory.filter { it.role == "system" }
+
+        messageHistory.clear()
+        messageHistory.addAll(systemMessages)
+
+        Log.d(TAG, "🧹 История диалога очищена. Системный промпт сохранен.")
+    }
+
+    /**
+     * Полная очистка истории (включая системный промпт)
+     */
+    fun clearFullHistory() {
+        messageHistory.clear()
+        Log.d(TAG, "🧹 Полная история очищена")
+    }
+
+    /**
+     * Удаление системных сообщений
+     */
+    private fun removeSystemMessages() {
+        val iterator = messageHistory.iterator()
+        while (iterator.hasNext()) {
+            if (iterator.next().role == "system") {
+                iterator.remove()
+            }
+        }
+    }
+
+    /**
+     * Удаление последнего сообщения из истории
+     */
+    fun removeLastMessage() {
+        if (messageHistory.isNotEmpty()) {
+            val removed = messageHistory.removeAt(messageHistory.size - 1)
+            Log.d(TAG, "🗑️ Удалено последнее сообщение: ${removed.role}")
+        }
+    }
+
+    /**
+     * Удаление последнего обмена (пара сообщений)
+     */
+    fun removeLastExchange() {
+        if (messageHistory.size >= 2) {
+            val lastTwo = messageHistory.takeLast(2)
+            messageHistory.removeAll(lastTwo)
+            Log.d(TAG, "🗑️ Удален последний обмен сообщениями")
         }
     }
 
@@ -237,10 +361,17 @@ class GigaChatRepository : ChatRepository {
         }
     }
 
-    // Метод для очистки кеша (можно вызывать при логауте)
+    // Метод для очистки кеша токена
     fun clearTokenCache() {
         cachedToken = null
         tokenExpiryTime = 0
         Log.d(TAG, "🧹 Кеш токена очищен")
+    }
+
+    // Полная очистка всего
+    fun clearAll() {
+        clearTokenCache()
+        clearFullHistory()
+        Log.d(TAG, "🧹 Полная очистка всех данных")
     }
 }

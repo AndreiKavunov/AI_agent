@@ -18,11 +18,11 @@ val localProperties = Properties().apply {
 }
 
 android {
-    namespace = "com.example.iifirst"
+    namespace = "com.example.aiagent"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.iifirst"
+        applicationId = "com.example.aiagent"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
