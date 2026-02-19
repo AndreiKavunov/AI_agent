@@ -1,5 +1,10 @@
 package com.example.aiagent.ui.screen
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,11 +41,19 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
+// Функция для копирования текста в буфер обмена
+private fun copyToClipboard(context: Context, text: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val clip = ClipData.newPlainText("agent_message", text)
+    clipboard.setPrimaryClip(clip)
+    Toast.makeText(context, "Сообщение скопировано", Toast.LENGTH_SHORT).show()
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,6 +61,7 @@ fun ChatScreen(
     viewModel: ChatViewModel = viewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -71,6 +85,9 @@ fun ChatScreen(
             MessagesList(
                 messages = state.messages,
                 isLoading = state.isLoading,
+                onAgentMessageLongClick = { messageContent ->
+                    copyToClipboard(context, messageContent)
+                },
                 modifier = Modifier.weight(1f)
             )
 
@@ -98,6 +115,7 @@ fun ChatScreen(
 fun MessagesList(
     messages: List<Message>,
     isLoading: Boolean,
+    onAgentMessageLongClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -113,7 +131,10 @@ fun MessagesList(
         items(messages.reversed()) { message ->
             when (message) {
                 is Message.UserMessage -> UserMessageItem(message)
-                is Message.AgentMessage -> AgentMessageItem(message)
+                is Message.AgentMessage -> AgentMessageItem(
+                    message = message,
+                    onLongClick = { onAgentMessageLongClick(message.content) }
+                )
             }
         }
     }
@@ -147,11 +168,19 @@ fun UserMessageItem(message: Message.UserMessage) {
 }
 
 @Composable
-fun AgentMessageItem(message: Message.AgentMessage) {
+fun AgentMessageItem(
+    message: Message.AgentMessage,
+    onLongClick: () -> Unit
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 4.dp)
+            .combinedClickable(
+                onClick = { /* Обычное нажатие - ничего не делаем или можно добавить другое действие */ },
+                onLongClick = onLongClick,
+                onLongClickLabel = "Копировать сообщение"
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
