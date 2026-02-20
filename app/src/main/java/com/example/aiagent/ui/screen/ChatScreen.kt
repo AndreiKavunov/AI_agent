@@ -4,6 +4,12 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,8 +26,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
@@ -33,12 +41,16 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -47,7 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
-// Функция для копирования текста в буфер обмена
+
 private fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val clip = ClipData.newPlainText("agent_message", text)
@@ -63,6 +75,9 @@ fun ChatScreen(
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
 
+    // Состояние для отображения панели с температурой
+    var showTemperature by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -72,6 +87,41 @@ fun ChatScreen(
                 ),
                 title = {
                     Text("Чат-агент")
+                },
+                actions = {
+                    // Кнопка нового чата
+                    IconButton(
+                        onClick = {
+                            viewModel.handleAction(ChatAction.NewChat)
+                            // Опционально: скрываем панель температуры при создании нового чата
+                            showTemperature = false
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Новый чат",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Иконка для показа/скрытия температуры
+                    IconButton(
+                        onClick = { showTemperature = !showTemperature }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = if (showTemperature) {
+                                "Скрыть настройки температуры"
+                            } else {
+                                "Показать настройки температуры"
+                            },
+                            tint = if (showTemperature) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    }
                 }
             )
         }
@@ -81,6 +131,26 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // Панель с температурой (показывается только если showTemperature = true)
+            AnimatedVisibility(
+                visible = showTemperature,
+                enter = fadeIn() + expandVertically(
+                    expandFrom = Alignment.Top,
+                    animationSpec = tween(300)
+                ),
+                exit = fadeOut() + shrinkVertically(
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = tween(300)
+                )
+            ) {
+                TemperatureSlider(
+                    temperature = state.temperature,
+                    onTemperatureChange = { newTemperature ->
+                        viewModel.handleAction(ChatAction.UpdateTemperature(newTemperature))
+                    }
+                )
+            }
+
             // Список сообщений
             MessagesList(
                 messages = state.messages,
@@ -118,23 +188,47 @@ fun MessagesList(
     onAgentMessageLongClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    LazyColumn(
-        modifier = modifier.padding(horizontal = 16.dp),
-        reverseLayout = true
-    ) {
-        item {
-            if (isLoading) {
-                LoadingIndicator()
+    if (messages.isEmpty()) {
+        // Показываем приветственное сообщение, когда чат пустой
+        Box(
+            modifier = modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "👋 Добро пожаловать!",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(
+                    text = "Начните новый диалог",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
+    } else {
+        LazyColumn(
+            modifier = modifier.padding(horizontal = 16.dp),
+            reverseLayout = true
+        ) {
+            item {
+                if (isLoading) {
+                    LoadingIndicator()
+                }
+            }
 
-        items(messages.reversed()) { message ->
-            when (message) {
-                is Message.UserMessage -> UserMessageItem(message)
-                is Message.AgentMessage -> AgentMessageItem(
-                    message = message,
-                    onLongClick = { onAgentMessageLongClick(message.content) }
-                )
+            items(messages.reversed()) { message ->
+                when (message) {
+                    is Message.UserMessage -> UserMessageItem(message)
+                    is Message.AgentMessage -> AgentMessageItem(
+                        message = message,
+                        onLongClick = { onAgentMessageLongClick(message.content) }
+                    )
+                }
             }
         }
     }
@@ -315,6 +409,38 @@ fun ErrorMessage(
                     tint = MaterialTheme.colorScheme.onErrorContainer
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun TemperatureSlider(
+    temperature: Double,
+    onTemperatureChange: (Double) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = "Температура: ${String.format("%.1f", temperature)}",
+                style = MaterialTheme.typography.titleSmall
+            )
+            Slider(
+                value = temperature.toFloat(),
+                onValueChange = { onTemperatureChange(it.toDouble()) },
+                valueRange = 0.0f..2.0f,
+                steps = 20
+            )
+            Text(
+                text = "Влияет на креативность ответов",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

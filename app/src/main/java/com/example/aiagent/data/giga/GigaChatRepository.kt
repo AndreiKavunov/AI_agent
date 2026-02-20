@@ -15,8 +15,10 @@ import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.request.forms.submitForm
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.Parameters
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
@@ -26,8 +28,6 @@ import kotlinx.serialization.json.Json
 import java.security.cert.X509Certificate
 import java.util.UUID
 import javax.net.ssl.X509TrustManager
-import io.ktor.client.request.forms.submitForm
-import io.ktor.http.Parameters
 
 class GigaChatRepository : ChatRepository {
     private val authKey = BuildConfig.GIGACHAT_AUTH_KEY
@@ -110,7 +110,13 @@ class GigaChatRepository : ChatRepository {
     }
 
     override suspend fun sendMessage(message: String): AgentResponse {
+        // Используем значение по умолчанию для обратной совместимости
+        return sendMessage(message, 0.7)
+    }
+
+    override suspend fun sendMessage(message: String, temperature: Double): AgentResponse {
         Log.d(TAG, "🚀 Начинаем запрос для: \"${message.take(50)}\"")
+        Log.d(TAG, "🌡️ Температура: $temperature")
         Log.d(TAG, "📚 Текущий размер истории: ${messageHistory.size} сообщений")
 
         return withContext(Dispatchers.IO) {
@@ -124,7 +130,8 @@ class GigaChatRepository : ChatRepository {
                 if (messageHistory.isEmpty()) {
                     val systemMessage = GigaMessage(
                         role = "system",
-                        content = "Ты полезный ассистент. Отвечай кратко и по делу на русском языке."
+//                        content = "Ты полезный ассистент. Отвечай кратко и по делу на русском языке."
+                        content = "Ты креативный помощник. Отвечай разнообразно и творчески."
                     )
                     messageHistory.add(systemMessage)
                     Log.d(TAG, "   ✨ Добавлено системное сообщение")
@@ -141,7 +148,7 @@ class GigaChatRepository : ChatRepository {
                 val chatRequest = ChatRequest(
                     model = "GigaChat",
                     messages = messageHistory.toList(), // Отправляем всю историю
-                    temperature = 0.7,
+                    temperature = temperature, // Используем переданную температуру
                     max_tokens = 1000,
                     stream = false
                 )
@@ -196,12 +203,31 @@ class GigaChatRepository : ChatRepository {
         }
     }
 
+    override fun clearChatHistory() {
+        // Сохраняем системное сообщение, если оно есть
+        val systemMessages = messageHistory.filter { it.role == "system" }
+
+        messageHistory.clear()
+
+        // Добавляем обратно системное сообщение, если оно было
+        if (systemMessages.isNotEmpty()) {
+            messageHistory.addAll(systemMessages)
+            Log.d(TAG, "🧹 История диалога очищена. Системный промпт сохранен.")
+        } else {
+            Log.d(TAG, "🧹 История диалога очищена.")
+        }
+    }
+
     /**
-     * Отправка сообщения с кастомным системным промптом
+     * Отправка сообщения с кастомным системным промптом и температурой
      */
-    suspend fun sendMessageWithCustomPrompt(message: String, systemPrompt: String): AgentResponse {
+    suspend fun sendMessageWithCustomPrompt(
+        message: String,
+        systemPrompt: String,
+        temperature: Double = 0.7
+    ): AgentResponse {
         setSystemPrompt(systemPrompt)
-        return sendMessage(message)
+        return sendMessage(message, temperature)
     }
 
     /**
@@ -239,20 +265,7 @@ class GigaChatRepository : ChatRepository {
     }
 
     /**
-     * Очистка истории сообщений (кроме системного промпта)
-     */
-    fun clearConversationHistory() {
-        // Сохраняем системные сообщения
-        val systemMessages = messageHistory.filter { it.role == "system" }
-
-        messageHistory.clear()
-        messageHistory.addAll(systemMessages)
-
-        Log.d(TAG, "🧹 История диалога очищена. Системный промпт сохранен.")
-    }
-
-    /**
-     * Полная очистка истории (включая системный промпт)
+     * Очистка истории сообщений (полная, включая системный промпт)
      */
     fun clearFullHistory() {
         messageHistory.clear()

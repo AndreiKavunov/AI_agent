@@ -20,7 +20,9 @@ class ChatViewModel(
         when (action) {
             is ChatAction.SendMessage -> sendMessage(action.text)
             is ChatAction.UpdateInput -> updateInput(action.text)
+            is ChatAction.UpdateTemperature -> updateTemperature(action.temperature)
             is ChatAction.ClearError -> clearError()
+            is ChatAction.NewChat -> newChat()
         }
     }
 
@@ -30,6 +32,26 @@ class ChatViewModel(
 
     private fun clearError() {
         _state.update { it.copy(error = null) }
+    }
+
+    private fun updateTemperature(temperature: Double) {
+        _state.update { it.copy(temperature = temperature) }
+    }
+
+    private fun newChat() {
+        viewModelScope.launch {
+            // Очищаем историю в репозитории через интерфейс
+            chatRepository.clearChatHistory()
+
+            // Очищаем сообщения в состоянии
+            _state.update { currentState ->
+                currentState.copy(
+                    messages = emptyList(),
+                    error = null
+                    // temperature не сбрасываем, чтобы сохранить настройки пользователя
+                )
+            }
+        }
     }
 
     private fun sendMessage(text: String) {
@@ -45,14 +67,17 @@ class ChatViewModel(
                 messages = currentState.messages + userMessage,
                 inputText = "",
                 isLoading = true,
-                error = null // Очищаем предыдущую ошибку
+                error = null
             )
         }
 
         viewModelScope.launch {
             try {
-                // Получаем ответ от агента
-                val response = chatRepository.sendMessage(text.trim())
+                // Получаем ответ от агента с текущей температурой
+                val response = chatRepository.sendMessage(
+                    message = text.trim(),
+                    temperature = _state.value.temperature
+                )
 
                 val agentMessage = Message.AgentMessage(
                     id = System.currentTimeMillis().toString(),

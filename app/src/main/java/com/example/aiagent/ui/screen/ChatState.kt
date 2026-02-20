@@ -22,5 +22,6 @@ data class ChatState(
     val messages: List<Message> = emptyList(),
     val inputText: String = "",
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val temperature: Double = 0.7 // Добавлено поле для температуры
 )
