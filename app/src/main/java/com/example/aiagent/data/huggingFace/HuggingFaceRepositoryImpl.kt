@@ -24,21 +24,18 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-// Data классы для разных типов ответов
-
 class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
 
     private val TAG = "HuggingFace"
-//    private val BASE_URL = "https://router.huggingface.co/hf-inference/models"
-    private val BASE_URL = "https://api-inference.huggingface.co/models/"
+    private val BASE_URL = "https://router.huggingface.co/hf-inference/models"
     private val CHAT_BASE_URL = "https://router.huggingface.co/v1/chat/completions"
 
     private val apiToken = BuildConfig.HF_TOKEN
@@ -67,9 +64,9 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
     private fun createClient(): HttpClient {
         return HttpClient(CIO) {
             install(HttpTimeout) {
-                requestTimeoutMillis = 60000L
+                requestTimeoutMillis = 120000L // Увеличиваем таймаут для больших моделей
                 connectTimeoutMillis = 30000L
-                socketTimeoutMillis = 60000L
+                socketTimeoutMillis = 120000L
             }
 
             install(HttpRequestRetry) {
@@ -97,9 +94,14 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
     }
 
     override suspend fun sendMessage(message: String, temperature: Double): AgentResponse {
+        val startTime = System.currentTimeMillis()
         Log.d(TAG, "🚀 Отправляем запрос к модели: ${currentModel.displayName}")
         Log.d(TAG, "📝 Сообщение: \"${message.take(50)}...\"")
         Log.d(TAG, "📊 Тип задачи: ${currentModel.taskType}")
+
+        var tokenCount = 0
+        var responseText = ""
+        var responseTime = 0L
 
         return withContext(Dispatchers.IO) {
             val client = createClient()
@@ -111,9 +113,26 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
                     TaskType.QUESTION_ANSWERING -> queryQuestionAnsweringModel(client, message)
                 }
 
+                responseText = response
+                tokenCount = estimateTokenCount(response)
+
+                val endTime = System.currentTimeMillis()
+                responseTime = endTime - startTime
+
+                Log.d(TAG, "⏱️ Время ответа: ${responseTime}ms")
+                Log.d(TAG, "📊 Токенов в ответе: ~$tokenCount")
+                Log.d(TAG, "⚡ Токенов/сек: ${String.format("%.2f", tokenCount / (responseTime/1000.0))}")
+
                 AgentResponse(
-                    text = response,
-                    toolUsed = detectTool(message)
+                    text = buildString {
+                        append("【${currentModel.displayName}】\n")
+                        append("⏱️ ${responseTime}ms | 📊 ${tokenCount} токенов | ⚡ ${String.format("%.1f", tokenCount / (responseTime/1000.0))} ток/с\n")
+                        append("━━━━━━━━━━━━━━━━━━━━━━\n\n")
+                        append(response)
+                    },
+                    toolUsed = detectTool(message),
+                    responseTimeMs = responseTime,
+                    tokenCount = tokenCount
                 )
 
             } catch (e: Exception) {
@@ -156,7 +175,6 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
         }
 
         Log.d(TAG, "📤 URL классификации: $url")
-        Log.d(TAG, "📤 Запрос: $requestBody")
 
         val response = client.post(url) {
             contentType(ContentType.Application.Json)
@@ -171,7 +189,6 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
         }
 
         val jsonString = response.bodyAsText()
-        Log.d(TAG, "📥 Ответ: $jsonString")
 
         return try {
             val predictions = jsonParser.decodeFromString<List<ClassificationResponse>>(jsonString)
@@ -182,6 +199,7 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
         }
     }
 
+    // Для генеративных моделей через новый эндпоинт
     private suspend fun queryTextGenerationModel(
         client: HttpClient,
         message: String,
@@ -189,10 +207,9 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
     ): String {
         messageHistory.add(HuggingFaceMessage(role = "user", content = message))
 
-        // Используем НОВЫЙ URL для чат-комплейшнс
         val url = CHAT_BASE_URL
 
-        // Формируем историю сообщений в формате, который понимают современные модели
+        // Формируем историю сообщений в формате OpenAI
         val messagesForApi = messageHistory.map { msg ->
             buildJsonObject {
                 put("role", msg.role)
@@ -201,23 +218,15 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
         }
 
         val requestBody = buildJsonObject {
-            put("model", currentModel.modelId) // Здесь указываем ID модели
+            put("model", currentModel.modelId)
             put("messages", JsonArray(messagesForApi))
-            putJsonObject("parameters") { // Параметры могут быть вложены или на верхнем уровне, но часто достаточно так
-                put("temperature", temperature)
-                put("max_tokens", 500)
-                put("top_p", 0.95)
-                // Другие параметры
-            }
-            // Параметры для ожидания модели
-            putJsonObject("options") {
-                put("wait_for_model", true)
-            }
+            put("temperature", temperature)
+            put("max_tokens", 1000)
+            put("top_p", 0.95)
         }
 
-        Log.d(TAG, "📤 URL (чат): $url")
+        Log.d(TAG, "📤 URL чата: $url")
         Log.d(TAG, "📤 Модель: ${currentModel.modelId}")
-        Log.d(TAG, "📤 Сообщения: $messagesForApi")
 
         val response = client.post(url) {
             contentType(ContentType.Application.Json)
@@ -233,10 +242,8 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
         }
 
         val jsonString = response.bodyAsText()
-        Log.d(TAG, "📥 Ответ: $jsonString")
 
         return try {
-            // Парсим ответ в новом формате OpenAI
             val answer = parseChatCompletionResponse(jsonString)
             messageHistory.add(HuggingFaceMessage(role = "assistant", content = answer))
             answer
@@ -247,48 +254,7 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
         }
     }
 
-    // Новая функция парсинга для OpenAI-совместимого ответа
-    private fun parseChatCompletionResponse(jsonString: String): String {
-        return try {
-            val jsonElement = jsonParser.parseToJsonElement(jsonString)
-            val choices = jsonElement.jsonObject["choices"]?.jsonArray
-            if (!choices.isNullOrEmpty()) {
-                val firstChoice = choices.first().jsonObject
-                val message = firstChoice["message"]?.jsonObject
-                message?.get("content")?.jsonPrimitive?.content ?: jsonString
-            } else {
-                jsonString
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка парсинга chat completion: ${e.message}")
-            jsonString
-        }
-    }
-
-    private fun parseGenerationResponse(jsonString: String): String {
-        return try {
-            val jsonElement = jsonParser.parseToJsonElement(jsonString)
-
-            when {
-                jsonElement.jsonArray.isNotEmpty() -> {
-                    val firstElement = jsonElement.jsonArray.first()
-                    firstElement.jsonObject["generated_text"]?.jsonPrimitive?.content
-                        ?: firstElement.toString()
-                }
-                jsonElement.jsonObject.containsKey("generated_text") -> {
-                    jsonElement.jsonObject["generated_text"]?.jsonPrimitive?.content
-                        ?: jsonString
-                }
-                else -> jsonString
-            }
-        } catch (e: Exception) {
-            jsonString
-        }
-    }
-
-    // Для вопросно-ответных моделей (можно добавить позже)
     private suspend fun queryQuestionAnsweringModel(client: HttpClient, message: String): String {
-        // Для QA моделей нужен контекст
         val context = "Здесь должен быть контекст для ответа на вопрос"
 
         val requestBody = buildJsonObject {
@@ -309,77 +275,19 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
         return "QA функционал в разработке"
     }
 
-    private fun formatPromptForModel(message: String): String {
-        return when (currentModel) {
-            HuggingFaceModel.MEDIUM -> {
-                // Формат для SmolLM2 (ChatML формат)
-                buildString {
-                    messageHistory.forEach { msg ->
-                        when (msg.role) {
-                            "system" -> append("<|im_start|>system\n${msg.content}<|im_end|>\n")
-                            "user" -> append("<|im_start|>user\n${msg.content}<|im_end|>\n")
-                            "assistant" -> append("<|im_start|>assistant\n${msg.content}<|im_end|>\n")
-                        }
-                    }
-                    append("<|im_start|>assistant\n")
-                }
-            }
-
-            HuggingFaceModel.STRONG -> {
-                // Правильный формат для Mistral-Instruct
-                buildString {
-                    var firstUserMessage = true
-
-                    messageHistory.forEachIndexed { index, msg ->
-                        when (msg.role) {
-                            "system" -> {
-                                if (index == 0) {
-                                    append("<s>[INST] <<SYS>>\n${msg.content}\n<</SYS>>\n\n")
-                                } else {
-                                    append("<<SYS>>\n${msg.content}\n<</SYS>>\n\n")
-                                }
-                            }
-                            "user" -> {
-                                if (firstUserMessage) {
-                                    append("${msg.content} [/INST] ")
-                                    firstUserMessage = false
-                                } else {
-                                    append("</s><s>[INST] ${msg.content} [/INST] ")
-                                }
-                            }
-                            "assistant" -> {
-                                append("${msg.content}")
-                            }
-                        }
-                    }
-                }
-            }
-
-            else -> message
-        }
-    }
-
-    private fun extractGenerationResponse(jsonString: String): String {
+    private fun parseChatCompletionResponse(jsonString: String): String {
         return try {
             val jsonElement = jsonParser.parseToJsonElement(jsonString)
-
-            when {
-                jsonElement.jsonArray.isNotEmpty() -> {
-                    val firstElement = jsonElement.jsonArray.first()
-                    val generatedText = firstElement.jsonObject["generated_text"]?.jsonPrimitive?.content
-                    generatedText?.trim() ?: firstElement.toString()
-                }
-
-                jsonElement.jsonObject.isNotEmpty() -> {
-                    val obj = jsonElement.jsonObject
-                    val generatedText = obj["generated_text"]?.jsonPrimitive?.content
-                    generatedText?.trim() ?: obj.toString()
-                }
-
-                else -> jsonString
+            val choices = jsonElement.jsonObject["choices"]?.jsonArray
+            if (!choices.isNullOrEmpty()) {
+                val firstChoice = choices.first().jsonObject
+                val message = firstChoice["message"]?.jsonObject
+                message?.get("content")?.jsonPrimitive?.content ?: jsonString
+            } else {
+                jsonString
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка парсинга: ${e.message}")
+            Log.e(TAG, "Ошибка парсинга chat completion: ${e.message}")
             jsonString
         }
     }
@@ -403,6 +311,11 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
         return builder.toString()
     }
 
+    private fun estimateTokenCount(text: String): Int {
+        // Грубая оценка: для русского и английского ~4 символа на токен
+        return (text.length / 4).coerceAtLeast(1)
+    }
+
     private fun detectTool(message: String): String? {
         val normalized = message.lowercase()
         return when {
@@ -416,3 +329,14 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
         }
     }
 }
+
+// Data классы
+//data class HuggingFaceMessage(
+//    val role: String,
+//    val content: String
+//)
+//
+//data class ClassificationResponse(
+//    val label: String,
+//    val score: Double
+//)

@@ -2,6 +2,7 @@ package com.example.aiagent.data.giga
 
 import android.util.Log
 import com.example.aiagent.BuildConfig
+import com.example.aiagent.data.huggingFace.Choice
 import com.example.aiagent.data.response.AgentResponse
 import com.example.aiagent.domain.ChatRepository
 import io.ktor.client.HttpClient
@@ -115,9 +116,14 @@ class GigaChatRepository : ChatRepository {
     }
 
     override suspend fun sendMessage(message: String, temperature: Double): AgentResponse {
+        val startTime = System.currentTimeMillis()
         Log.d(TAG, "🚀 Начинаем запрос для: \"${message.take(50)}\"")
         Log.d(TAG, "🌡️ Температура: $temperature")
         Log.d(TAG, "📚 Текущий размер истории: ${messageHistory.size} сообщений")
+
+        var tokenCount = 0
+        var responseText = ""
+        var responseTime = 0L
 
         return withContext(Dispatchers.IO) {
             val client = createClient()
@@ -180,16 +186,33 @@ class GigaChatRepository : ChatRepository {
                 val answer = chatResponseObj.choices.firstOrNull()?.message?.content
                     ?: throw Exception("Ответ не найден в JSON")
 
+                // Подсчет токенов из ответа API
+                tokenCount = chatResponseObj.usage?.total_tokens ?: estimateTokenCount(answer)
+                responseText = formatAnswer(answer)
+
                 // 5. ДОБАВЛЯЕМ ОТВЕТ АССИСТЕНТА В ИСТОРИЮ
                 val assistantMessage = GigaMessage(role = "assistant", content = answer)
                 messageHistory.add(assistantMessage)
 
+                val endTime = System.currentTimeMillis()
+                responseTime = endTime - startTime
+
                 Log.d(TAG, "✅ Успех! Ответ получен (${answer.length} символов)")
+                Log.d(TAG, "⏱️ Время ответа: ${responseTime}ms")
+                Log.d(TAG, "📊 Токенов: $tokenCount")
+                Log.d(TAG, "⚡ Токенов/сек: ${String.format("%.2f", tokenCount / (responseTime/1000.0))}")
                 Log.d(TAG, "📚 История теперь содержит ${messageHistory.size} сообщений")
 
                 AgentResponse(
-                    text = formatAnswer(answer),
-                    toolUsed = detectTool(message)
+                    text = buildString {
+                        append("【GigaChat】\n")
+                        append("⏱️ ${responseTime}ms | 📊 ${tokenCount} токенов | ⚡ ${String.format("%.1f", tokenCount / (responseTime/1000.0))} ток/с\n")
+                        append("━━━━━━━━━━━━━━━━━━━━━━\n\n")
+                        append(responseText)
+                    },
+                    toolUsed = detectTool(message),
+                    responseTimeMs = responseTime,
+                    tokenCount = tokenCount
                 )
 
             } catch (e: Exception) {
@@ -358,6 +381,11 @@ class GigaChatRepository : ChatRepository {
             .replace("\\s+".toRegex(), " ")          // Убираем лишние пробелы
     }
 
+    private fun estimateTokenCount(text: String): Int {
+        // Грубая оценка: для русского и английского ~4 символа на токен
+        return (text.length / 4).coerceAtLeast(1)
+    }
+
     private fun detectTool(message: String): String? {
         val normalized = message.lowercase()
 
@@ -388,3 +416,6 @@ class GigaChatRepository : ChatRepository {
         Log.d(TAG, "🧹 Полная очистка всех данных")
     }
 }
+
+
+

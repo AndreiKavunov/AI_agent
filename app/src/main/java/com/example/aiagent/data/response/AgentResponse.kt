@@ -7,5 +7,6 @@ import kotlinx.serialization.Serializable
 data class AgentResponse(
     val text: String,
     val toolUsed: String? = null,
-    val modelUsed: String? = null, // Добавим поле для отслеживания модели
+    val responseTimeMs: Long = 0,
+    val tokenCount: Int = 0
 )

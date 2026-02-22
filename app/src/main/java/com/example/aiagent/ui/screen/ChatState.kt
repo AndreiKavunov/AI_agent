@@ -18,6 +18,8 @@ sealed interface Message {
         override val id: String,
         override val content: String,
         val toolUsed: String? = null,
+        val responseTimeMs: Long = 0,
+        val tokenCount: Int = 0,
         override val timestamp: Long = System.currentTimeMillis()
     ) : Message
 }
@@ -29,5 +31,8 @@ data class ChatState(
     val error: String? = null,
     val temperature: Double = 0.7,
     val currentRepositoryType: RepositoryType = RepositoryType.GIGACHAT,
-    val huggingFaceModel: HuggingFaceModel = HuggingFaceModel.MEDIUM
+    val huggingFaceModel: HuggingFaceModel = HuggingFaceModel.MEDIUM,
+    val lastResponseTime: Long? = null,
+    val lastTokenCount: Int? = null,
+    val lastTokensPerSecond: Double? = null
 )

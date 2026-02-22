@@ -1,9 +1,8 @@
 package com.example.aiagent.ui.screen
 
-import com.example.aiagent.data.huggingFace.HuggingFaceModel
-
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.di.AppModule
 import com.example.aiagent.domain.ChatRepository
 import com.example.aiagent.domain.RepositoryType
@@ -27,7 +26,8 @@ class ChatViewModel(
     init {
         _state.update {
             it.copy(
-                currentRepositoryType = AppModule.getCurrentRepositoryType()
+                currentRepositoryType = AppModule.getCurrentRepositoryType(),
+                huggingFaceModel = AppModule.huggingFaceRepository?.getCurrentHuggingFaceModel() ?: HuggingFaceModel.MEDIUM
             )
         }
     }
@@ -59,7 +59,14 @@ class ChatViewModel(
     private fun newChat() {
         viewModelScope.launch {
             chatRepository.clearChatHistory()
-            _state.update { it.copy(messages = emptyList(), error = null) }
+            _state.update {
+                it.copy(
+                    messages = emptyList(),
+                    error = null,
+                    lastResponseTime = null,
+                    lastTokenCount = null
+                )
+            }
         }
     }
 
@@ -71,7 +78,14 @@ class ChatViewModel(
             it.copy(
                 currentRepositoryType = repositoryType,
                 messages = emptyList(),
-                error = null
+                error = null,
+                lastResponseTime = null,
+                lastTokenCount = null,
+                huggingFaceModel = if (repositoryType == RepositoryType.HUGGINGFACE) {
+                    AppModule.huggingFaceRepository?.getCurrentHuggingFaceModel() ?: HuggingFaceModel.MEDIUM
+                } else {
+                    it.huggingFaceModel
+                }
             )
         }
     }
@@ -81,7 +95,10 @@ class ChatViewModel(
 
         _state.update {
             it.copy(
-                huggingFaceModel = modelType
+                huggingFaceModel = modelType,
+                messages = emptyList(), // Очищаем историю при смене модели
+                lastResponseTime = null,
+                lastTokenCount = null
             )
         }
     }
@@ -105,22 +122,34 @@ class ChatViewModel(
 
         viewModelScope.launch {
             try {
+                val startTime = System.currentTimeMillis()
+
                 // Используем актуальный репозиторий
                 val response = chatRepository.sendMessage(
                     message = text.trim(),
                     temperature = _state.value.temperature
                 )
 
+                val endTime = System.currentTimeMillis()
+                val responseTime = endTime - startTime
+
                 val agentMessage = Message.AgentMessage(
                     id = System.currentTimeMillis().toString(),
                     content = response.text,
-                    toolUsed = response.toolUsed
+                    toolUsed = response.toolUsed,
+                    responseTimeMs = response.responseTimeMs,
+                    tokenCount = response.tokenCount
                 )
 
                 _state.update { currentState ->
                     currentState.copy(
                         messages = currentState.messages + agentMessage,
-                        isLoading = false
+                        isLoading = false,
+                        lastResponseTime = response.responseTimeMs,
+                        lastTokenCount = response.tokenCount,
+                        lastTokensPerSecond = if (response.responseTimeMs > 0) {
+                            response.tokenCount / (response.responseTimeMs / 1000.0)
+                        } else null
                     )
                 }
             } catch (e: Exception) {

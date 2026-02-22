@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
@@ -58,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,13 +67,23 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.di.AppModule
 import com.example.aiagent.domain.RepositoryType
-
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val clip = ClipData.newPlainText("agent_message", text)
     clipboard.setPrimaryClip(clip)
     Toast.makeText(context, "Сообщение скопировано", Toast.LENGTH_SHORT).show()
+}
+
+private fun formatTime(ms: Long): String {
+    return when {
+        ms < 1000 -> "${ms}ms"
+        ms < 60000 -> "${String.format("%.1f", ms / 1000.0)}с"
+        else -> "${String.format("%.1f", ms / 60000.0)}мин"
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -225,6 +237,18 @@ fun ChatScreen(
                 )
             }
 
+            // Статистика последнего ответа (только для HuggingFace)
+            if (state.currentRepositoryType == RepositoryType.HUGGINGFACE &&
+                state.lastResponseTime != null &&
+                state.lastTokenCount != null) {
+                ResponseStats(
+                    responseTimeMs = state.lastResponseTime ?: 0,
+                    tokenCount = state.lastTokenCount ?: 0,
+                    tokensPerSecond = state.lastTokensPerSecond,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+
             // Список сообщений
             MessagesList(
                 messages = state.messages,
@@ -249,6 +273,74 @@ fun ChatScreen(
                 ErrorMessage(
                     error = error,
                     onDismiss = { viewModel.handleAction(ChatAction.ClearError) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ResponseStats(
+    responseTimeMs: Long,
+    tokenCount: Int,
+    tokensPerSecond: Double?,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Время ответа
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Timeline,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = formatTime(responseTimeMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Разделитель
+            Text(
+                text = "•",
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+
+            // Количество токенов
+            Text(
+                text = "${tokenCount} токенов",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                fontWeight = FontWeight.Bold
+            )
+
+            // Скорость (если есть)
+            tokensPerSecond?.let { tps ->
+                Text(
+                    text = "•",
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Text(
+                    text = "${String.format("%.1f", tps)} ток/с",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
@@ -289,7 +381,7 @@ fun RepositorySelector(
             RepositoryOption(
                 type = RepositoryType.HUGGINGFACE,
                 displayName = "HuggingFace",
-                description = "Открытые модели (BERT, Mistral, Mixtral)",
+                description = "Открытые модели (Llama, Mistral)",
                 isSelected = currentType == RepositoryType.HUGGINGFACE,
                 onClick = { onTypeSelected(RepositoryType.HUGGINGFACE) }
             )
@@ -472,11 +564,25 @@ fun UserMessageItem(message: Message.UserMessage) {
         Column(
             modifier = Modifier.padding(12.dp)
         ) {
-            Text(
-                text = "Вы",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Вы",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Время отправки
+                Text(
+                    text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.timestamp)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
+
             Text(
                 text = message.content,
                 style = MaterialTheme.typography.bodyMedium,
@@ -507,39 +613,103 @@ fun AgentMessageItem(
         Column(
             modifier = Modifier.padding(12.dp)
         ) {
+            // Верхняя строка с метаданными
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = "Агент",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Агент",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-                message.toolUsed?.let { tool ->
-                    AssistChip(
-                        onClick = { },
-                        label = {
-                            Text(
-                                text = tool,
-                                fontSize = 10.sp,
-                                maxLines = 1
-                            )
-                        },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            labelColor = MaterialTheme.colorScheme.onTertiaryContainer
+                    // Статистика ответа (если есть)
+                    if (message.responseTimeMs > 0 || message.tokenCount > 0) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "•",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Время ответа
+                        if (message.responseTimeMs > 0) {
+                            Text(
+                                text = formatTime(message.responseTimeMs),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        // Количество токенов
+                        if (message.tokenCount > 0) {
+                            if (message.responseTimeMs > 0) {
+                                Text(
+                                    text = " | ",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                            }
+                            Text(
+                                text = "${message.tokenCount} токенов",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+
+                Row {
+                    // Инструмент (если есть)
+                    message.toolUsed?.let { tool ->
+                        AssistChip(
+                            onClick = { },
+                            label = {
+                                Text(
+                                    text = tool,
+                                    fontSize = 10.sp,
+                                    maxLines = 1
+                                )
+                            },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                labelColor = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        )
+                    }
+
+                    // Время получения ответа
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.timestamp)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
                 }
             }
 
+            // Текст сообщения
             Text(
                 text = message.content,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp)
+            )
+
+            // Дополнительная информация при длинном нажатии
+            Text(
+                text = "Долгое нажатие для копирования",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .padding(top = 4.dp)
             )
         }
     }

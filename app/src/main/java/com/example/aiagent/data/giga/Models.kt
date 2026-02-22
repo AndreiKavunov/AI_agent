@@ -30,7 +30,14 @@ data class GigaMessage(
 data class ChatResponse(
     val choices: List<GigaChoice>,
     val created: Long,
-    val model: String? = null
+    val model: String? = null,
+    val usage: Usage? = null
+)
+@Serializable
+data class Usage(
+    val prompt_tokens: Int,
+    val completion_tokens: Int,
+    val total_tokens: Int
 )
 
 @Serializable
