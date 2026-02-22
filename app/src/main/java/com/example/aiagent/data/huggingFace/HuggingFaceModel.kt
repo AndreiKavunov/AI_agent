@@ -1,36 +1,5 @@
 package com.example.aiagent.data.huggingFace
 
-//enum class HuggingFaceModel(
-//    val modelId: String,
-//    val displayName: String,
-//    val description: String,
-//    val taskType: TaskType  // Добавляем тип задачи
-//) {
-//    // СЛАБАЯ - модель для анализа тональности (классификация)
-//    WEAK(
-//        modelId = "cardiffnlp/twitter-roberta-base-sentiment-latest",
-//        displayName = "RoBERTa (Слабая)",
-//        description = "Анализ тональности текста, 125M параметров",
-//        taskType = TaskType.TEXT_CLASSIFICATION
-//    ),
-//
-//    // СРЕДНЯЯ - инструктивная модель для генерации
-//    MEDIUM(
-//        modelId = "microsoft/phi-2",
-//        displayName = "Phi-2 (Средняя)",
-//        description = "Компактная генеративная модель Microsoft, 2.7B параметров",
-//        taskType = TaskType.TEXT_GENERATION
-//    ),
-//
-//    // СИЛЬНАЯ - мощная генеративная модель
-//    STRONG(
-//        modelId = "mistralai/Mixtral-8x7B-Instruct-v0.1",
-//        displayName = "Mixtral (Сильная)",
-//        description = "Мощная модель со смесью экспертов, 46.7B параметров",
-//        taskType = TaskType.TEXT_GENERATION
-//    )
-//}
-
 enum class HuggingFaceModel(
     val modelId: String,
     val displayName: String,
@@ -40,7 +9,7 @@ enum class HuggingFaceModel(
     // СЛАБАЯ - модель для анализа тональности (классификация)
     WEAK_ANALYSIS_1(
         modelId = "cardiffnlp/twitter-roberta-base-sentiment-latest",
-        displayName = "RoBERTa (Слабая)",
+        displayName = "RoBERTa",
         description = "Анализ тональности текста, 125M параметров",
         taskType = TaskType.TEXT_CLASSIFICATION
     ),
@@ -60,7 +29,7 @@ enum class HuggingFaceModel(
 
     MEDIUM(
         modelId = "mistralai/Mistral-7B-Instruct-v0.2", // v0.2 вместо v0.3
-        displayName = "Mistral-7B v0.2 (Тест 6)",
+        displayName = "Mistral-7B v0.2 (Средняя)",
         description = "7B, предыдущая версия",
         taskType = TaskType.TEXT_GENERATION
     ),
