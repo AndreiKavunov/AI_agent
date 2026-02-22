@@ -1,8 +1,12 @@
 package com.example.aiagent.ui.screen
 
+import com.example.aiagent.data.huggingFace.HuggingFaceModel
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.aiagent.di.AppModule
 import com.example.aiagent.domain.ChatRepository
+import com.example.aiagent.domain.RepositoryType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -10,11 +14,23 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class ChatViewModel(
-    private val chatRepository: ChatRepository
+    // Убираем параметр chatRepository из конструктора
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
+
+    // Получаем репозиторий через AppModule каждый раз при обращении
+    private val chatRepository: ChatRepository
+        get() = AppModule.chatRepository
+
+    init {
+        _state.update {
+            it.copy(
+                currentRepositoryType = AppModule.getCurrentRepositoryType()
+            )
+        }
+    }
 
     fun handleAction(action: ChatAction) {
         when (action) {
@@ -23,6 +39,8 @@ class ChatViewModel(
             is ChatAction.UpdateTemperature -> updateTemperature(action.temperature)
             is ChatAction.ClearError -> clearError()
             is ChatAction.NewChat -> newChat()
+            is ChatAction.SwitchRepository -> switchRepository(action.repositoryType)
+            is ChatAction.SelectHuggingFaceModel -> selectHuggingFaceModel(action.modelType)
         }
     }
 
@@ -40,17 +58,31 @@ class ChatViewModel(
 
     private fun newChat() {
         viewModelScope.launch {
-            // Очищаем историю в репозитории через интерфейс
             chatRepository.clearChatHistory()
+            _state.update { it.copy(messages = emptyList(), error = null) }
+        }
+    }
 
-            // Очищаем сообщения в состоянии
-            _state.update { currentState ->
-                currentState.copy(
-                    messages = emptyList(),
-                    error = null
-                    // temperature не сбрасываем, чтобы сохранить настройки пользователя
-                )
-            }
+    private fun switchRepository(repositoryType: RepositoryType) {
+        // Переключаем репозиторий через AppModule
+        AppModule.switchRepository(repositoryType)
+
+        _state.update {
+            it.copy(
+                currentRepositoryType = repositoryType,
+                messages = emptyList(),
+                error = null
+            )
+        }
+    }
+
+    private fun selectHuggingFaceModel(modelType: HuggingFaceModel) {
+        AppModule.huggingFaceRepository?.setHuggingFaceModel(modelType)
+
+        _state.update {
+            it.copy(
+                huggingFaceModel = modelType
+            )
         }
     }
 
@@ -73,7 +105,7 @@ class ChatViewModel(
 
         viewModelScope.launch {
             try {
-                // Получаем ответ от агента с текущей температурой
+                // Используем актуальный репозиторий
                 val response = chatRepository.sendMessage(
                     message = text.trim(),
                     temperature = _state.value.temperature
@@ -94,7 +126,7 @@ class ChatViewModel(
             } catch (e: Exception) {
                 _state.update { currentState ->
                     currentState.copy(
-                        error = "Ошибка: ${e.message}",
+                        error = "Ошибка (${_state.value.currentRepositoryType}): ${e.message}",
                         isLoading = false
                     )
                 }

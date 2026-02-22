@@ -1,5 +1,8 @@
 package com.example.aiagent.ui.screen
 
+import com.example.aiagent.data.huggingFace.HuggingFaceModel
+import com.example.aiagent.domain.RepositoryType
+
 sealed interface Message {
     val id: String
     val content: String
@@ -18,10 +21,13 @@ sealed interface Message {
         override val timestamp: Long = System.currentTimeMillis()
     ) : Message
 }
+
 data class ChatState(
     val messages: List<Message> = emptyList(),
     val inputText: String = "",
     val isLoading: Boolean = false,
     val error: String? = null,
-    val temperature: Double = 0.7 // Добавлено поле для температуры
+    val temperature: Double = 0.7,
+    val currentRepositoryType: RepositoryType = RepositoryType.GIGACHAT,
+    val huggingFaceModel: HuggingFaceModel = HuggingFaceModel.MEDIUM
 )

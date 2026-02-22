@@ -10,6 +10,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
@@ -40,6 +43,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -58,6 +62,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.aiagent.data.huggingFace.HuggingFaceModel
+import com.example.aiagent.di.AppModule
+import com.example.aiagent.domain.RepositoryType
 
 
 private fun copyToClipboard(context: Context, text: String) {
@@ -70,13 +77,15 @@ private fun copyToClipboard(context: Context, text: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
-    viewModel: ChatViewModel = viewModel()
+//    viewModel: ChatViewModel = viewModel(factory = AppModule.viewModelFactory)
 ) {
+    val viewModel: ChatViewModel = viewModel(factory = AppModule.viewModelFactory)
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
 
-    // Состояние для отображения панели с температурой
     var showTemperature by remember { mutableStateOf(false) }
+    var showRepositorySelector by remember { mutableStateOf(false) }
+    var showHuggingFaceModelSelector by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -86,15 +95,23 @@ fun ChatScreen(
                     titleContentColor = MaterialTheme.colorScheme.primary,
                 ),
                 title = {
-                    Text("Чат-агент")
+                    Column {
+                        Text("Чат-агент")
+                        Text(
+                            text = when (state.currentRepositoryType) {
+                                RepositoryType.GIGACHAT -> "GigaChat"
+                                RepositoryType.HUGGINGFACE -> "HuggingFace: ${state.huggingFaceModel.displayName}"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 },
                 actions = {
                     // Кнопка нового чата
                     IconButton(
                         onClick = {
                             viewModel.handleAction(ChatAction.NewChat)
-                            // Опционально: скрываем панель температуры при создании нового чата
-                            showTemperature = false
                         }
                     ) {
                         Icon(
@@ -104,7 +121,18 @@ fun ChatScreen(
                         )
                     }
 
-                    // Иконка для показа/скрытия температуры
+                    // Кнопка переключения репозитория
+                    IconButton(
+                        onClick = { showRepositorySelector = !showRepositorySelector }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SwapHoriz,
+                            contentDescription = "Переключить провайдера",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Кнопка настроек температуры
                     IconButton(
                         onClick = { showTemperature = !showTemperature }
                     ) {
@@ -131,7 +159,53 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Панель с температурой (показывается только если showTemperature = true)
+            // Селектор репозитория
+            AnimatedVisibility(
+                visible = showRepositorySelector,
+                enter = fadeIn() + expandVertically(
+                    expandFrom = Alignment.Top,
+                    animationSpec = tween(300)
+                ),
+                exit = fadeOut() + shrinkVertically(
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = tween(300)
+                )
+            ) {
+                RepositorySelector(
+                    currentType = state.currentRepositoryType,
+                    onTypeSelected = { type ->
+                        viewModel.handleAction(ChatAction.SwitchRepository(type))
+                        showRepositorySelector = false
+                        // Показываем селектор моделей если выбрали HuggingFace
+                        if (type == RepositoryType.HUGGINGFACE) {
+                            showHuggingFaceModelSelector = true
+                        }
+                    }
+                )
+            }
+
+            // Селектор модели HuggingFace
+            AnimatedVisibility(
+                visible = showHuggingFaceModelSelector && state.currentRepositoryType == RepositoryType.HUGGINGFACE,
+                enter = fadeIn() + expandVertically(
+                    expandFrom = Alignment.Top,
+                    animationSpec = tween(300)
+                ),
+                exit = fadeOut() + shrinkVertically(
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = tween(300)
+                )
+            ) {
+                HuggingFaceModelSelector(
+                    currentModel = state.huggingFaceModel,
+                    onModelSelected = { model ->
+                        viewModel.handleAction(ChatAction.SelectHuggingFaceModel(model))
+                        showHuggingFaceModelSelector = false
+                    }
+                )
+            }
+
+            // Панель с температурой
             AnimatedVisibility(
                 visible = showTemperature,
                 enter = fadeIn() + expandVertically(
@@ -182,14 +256,165 @@ fun ChatScreen(
 }
 
 @Composable
+fun RepositorySelector(
+    currentType: RepositoryType,
+    onTypeSelected: (RepositoryType) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = "Выберите провайдера:",
+                style = MaterialTheme.typography.titleSmall
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // GigaChat
+            RepositoryOption(
+                type = RepositoryType.GIGACHAT,
+                displayName = "GigaChat",
+                description = "Модели от Сбера",
+                isSelected = currentType == RepositoryType.GIGACHAT,
+                onClick = { onTypeSelected(RepositoryType.GIGACHAT) }
+            )
+
+            // HuggingFace
+            RepositoryOption(
+                type = RepositoryType.HUGGINGFACE,
+                displayName = "HuggingFace",
+                description = "Открытые модели (BERT, Mistral, Mixtral)",
+                isSelected = currentType == RepositoryType.HUGGINGFACE,
+                onClick = { onTypeSelected(RepositoryType.HUGGINGFACE) }
+            )
+        }
+    }
+}
+
+@Composable
+fun RepositoryOption(
+    type: RepositoryType,
+    displayName: String,
+    description: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = isSelected,
+            onClick = onClick
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Column {
+            Text(
+                text = displayName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isSelected)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+fun HuggingFaceModelSelector(
+    currentModel: HuggingFaceModel,
+    onModelSelected: (HuggingFaceModel) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = "Выберите модель HuggingFace:",
+                style = MaterialTheme.typography.titleSmall
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            HuggingFaceModel.values().forEach { model ->
+                ModelOption(
+                    model = model,
+                    isSelected = currentModel == model,
+                    onClick = { onModelSelected(model) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ModelOption(
+    model: HuggingFaceModel,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = isSelected,
+            onClick = onClick
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Column {
+            Text(
+                text = model.displayName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isSelected)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = model.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
 fun MessagesList(
     messages: List<Message>,
     isLoading: Boolean,
     onAgentMessageLongClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    if (messages.isEmpty()) {
-        // Показываем приветственное сообщение, когда чат пустой
+    if (messages.isEmpty() && !isLoading) {
         Box(
             modifier = modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -271,7 +496,7 @@ fun AgentMessageItem(
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .combinedClickable(
-                onClick = { /* Обычное нажатие - ничего не делаем или можно добавить другое действие */ },
+                onClick = { },
                 onLongClick = onLongClick,
                 onLongClickLabel = "Копировать сообщение"
             ),

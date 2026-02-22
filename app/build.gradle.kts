@@ -30,9 +30,13 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Добавляем значение из local.properties в BuildConfig
+        // Добавляем значения из local.properties в BuildConfig
         val gigachatAuthKey = localProperties.getProperty("GIGACHAT_AUTH_KEY", "")
         buildConfigField("String", "GIGACHAT_AUTH_KEY", "\"$gigachatAuthKey\"")
+
+        // Добавляем HF_TOKEN
+        val hfToken = localProperties.getProperty("HF_TOKEN", "")
+        buildConfigField("String", "HF_TOKEN", "\"$hfToken\"")
     }
 
     buildTypes {
@@ -46,11 +50,17 @@ android {
             // Для release тоже добавляем
             val gigachatAuthKey = localProperties.getProperty("GIGACHAT_AUTH_KEY", "")
             buildConfigField("String", "GIGACHAT_AUTH_KEY", "\"$gigachatAuthKey\"")
+
+            val hfToken = localProperties.getProperty("HF_TOKEN", "")
+            buildConfigField("String", "HF_TOKEN", "\"$hfToken\"")
         }
 
         debug {
             val gigachatAuthKey = localProperties.getProperty("GIGACHAT_AUTH_KEY", "")
             buildConfigField("String", "GIGACHAT_AUTH_KEY", "\"$gigachatAuthKey\"")
+
+            val hfToken = localProperties.getProperty("HF_TOKEN", "")
+            buildConfigField("String", "HF_TOKEN", "\"$hfToken\"")
         }
     }
 
