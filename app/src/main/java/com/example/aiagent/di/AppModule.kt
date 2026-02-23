@@ -1,62 +1,56 @@
+// di/AppModule.kt
 package com.example.aiagent.di
-
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.aiagent.data.giga.GigaChatRepository
+import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
-import com.example.aiagent.domain.ChatRepository
-import com.example.aiagent.domain.HuggingFaceRepository
 import com.example.aiagent.domain.RepositoryType
+import com.example.aiagent.domain.agent.UniversalAgent
+import com.example.aiagent.domain.agent.UniversalAgentImpl
 import com.example.aiagent.ui.screen.ChatViewModel
 
-
 object AppModule {
-    private var repositoryInstance: ChatRepository? = null
-    private var currentType = RepositoryType.GIGACHAT
 
-    // Убираем backing field, всегда возвращаем актуальный экземпляр
-    val chatRepository: ChatRepository
-        get() {
-            // Всегда возвращаем текущий репозиторий, создаем если null
-            if (repositoryInstance == null) {
-                repositoryInstance = createRepository(currentType)
-            }
-            return repositoryInstance!!
-        }
+    // Репозитории (синглтоны)
+    private val gigaChatRepository: GigaChatRepository by lazy {
+        GigaChatRepository.getInstance()
+    }
 
-    val huggingFaceRepository: HuggingFaceRepository?
-        get() = repositoryInstance as? HuggingFaceRepository
+    private val huggingFaceRepository: HuggingFaceRepositoryImpl by lazy {
+        HuggingFaceRepositoryImpl.getInstance()
+    }
 
+    // УНИВЕРСАЛЬНЫЙ АГЕНТ - единственное место для работы с чатом
+    val universalAgent: UniversalAgent by lazy {
+        UniversalAgentImpl(
+            gigaChatRepository = gigaChatRepository,
+            huggingFaceRepository = huggingFaceRepository
+        )
+    }
+
+    // Фабрика ViewModel
     val viewModelFactory: ViewModelProvider.Factory by lazy {
         object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 if (modelClass.isAssignableFrom(ChatViewModel::class.java)) {
                     @Suppress("UNCHECKED_CAST")
-                    // Передаем null, ViewModel будет получать репозиторий через AppModule
-                    return ChatViewModel() as T
+                    return ChatViewModel(universalAgent) as T
                 }
                 throw IllegalArgumentException("Unknown ViewModel class")
             }
         }
     }
 
-    fun switchRepository(type: RepositoryType): ChatRepository {
-        currentType = type
-        repositoryInstance = createRepository(type)
-        return repositoryInstance!!
+    // Вспомогательные методы для обратной совместимости
+    fun getCurrentRepositoryType() = universalAgent.getCurrentRepositoryType()
+
+    fun switchRepository(type: RepositoryType) {
+        universalAgent.switchRepository(type)
     }
 
-    private fun createRepository(type: RepositoryType): ChatRepository {
-        return when (type) {
-            RepositoryType.GIGACHAT -> GigaChatRepository.getInstance()
-            RepositoryType.HUGGINGFACE -> HuggingFaceRepositoryImpl.getInstance()
-        }
-    }
-
-    fun getCurrentRepositoryType(): RepositoryType = currentType
-
-    fun setTestRepository(repository: ChatRepository) {
-        repositoryInstance = repository
+    fun setHuggingFaceModel(modelType: HuggingFaceModel) {
+        universalAgent.setHuggingFaceModel(modelType)
     }
 }

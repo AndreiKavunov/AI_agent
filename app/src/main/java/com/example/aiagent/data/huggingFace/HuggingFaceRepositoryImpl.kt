@@ -1,7 +1,9 @@
+// data/huggingFace/HuggingFaceRepositoryImpl.kt
 package com.example.aiagent.data.huggingFace
 
 import android.util.Log
 import com.example.aiagent.BuildConfig
+import com.example.aiagent.data.giga.GigaMessage
 import com.example.aiagent.data.response.AgentResponse
 import com.example.aiagent.domain.ChatRepository
 import com.example.aiagent.domain.HuggingFaceRepository
@@ -32,16 +34,16 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
+private const val TAG = "HuggingFace"
+
 class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
 
-    private val TAG = "HuggingFace"
     private val BASE_URL = "https://router.huggingface.co/hf-inference/models"
     private val CHAT_BASE_URL = "https://router.huggingface.co/v1/chat/completions"
 
     private val apiToken = BuildConfig.HF_TOKEN
 
     private var currentModel: HuggingFaceModel = HuggingFaceModel.MEDIUM
-    private val messageHistory = mutableListOf<HuggingFaceMessage>()
 
     companion object {
         @Volatile
@@ -89,48 +91,38 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
         }
     }
 
-    override suspend fun sendMessage(message: String): AgentResponse {
-        return sendMessage(message, 0.7)
-    }
-
-    override suspend fun sendMessage(message: String, temperature: Double): AgentResponse {
+    // ОСНОВНОЙ МЕТОД - принимает историю от агента
+    override suspend fun sendMessageWithHistory(
+        history: List<GigaMessage>,
+        temperature: Double
+    ): AgentResponse {
         val startTime = System.currentTimeMillis()
-        Log.d(TAG, "🚀 Отправляем запрос к модели: ${currentModel.displayName}")
-        Log.d(TAG, "📝 Сообщение: \"${message.take(50)}...\"")
+        Log.d(TAG, "🚀 HuggingFace получает историю из ${history.size} сообщений")
+        Log.d(TAG, "📝 Модель: ${currentModel.displayName}")
         Log.d(TAG, "📊 Тип задачи: ${currentModel.taskType}")
-
-        var tokenCount = 0
-        var responseText = ""
-        var responseTime = 0L
+        Log.d(TAG, "🌡️ Температура: $temperature")
 
         return withContext(Dispatchers.IO) {
             val client = createClient()
 
             try {
                 val response = when (currentModel.taskType) {
-                    TaskType.TEXT_CLASSIFICATION -> queryClassificationModel(client, message)
-                    TaskType.TEXT_GENERATION -> queryTextGenerationModel(client, message, temperature)
-                    TaskType.QUESTION_ANSWERING -> queryQuestionAnsweringModel(client, message)
+                    TaskType.TEXT_CLASSIFICATION -> queryClassificationModel(client, history)
+                    TaskType.TEXT_GENERATION -> queryTextGenerationModel(client, history, temperature)
+                    TaskType.QUESTION_ANSWERING -> queryQuestionAnsweringModel(client, history)
                 }
 
-                responseText = response
-                tokenCount = estimateTokenCount(response)
-
                 val endTime = System.currentTimeMillis()
-                responseTime = endTime - startTime
+                val responseTime = endTime - startTime
+                val tokenCount = estimateTokenCount(response)
 
+                Log.d(TAG, "✅ Успех! Ответ получен")
                 Log.d(TAG, "⏱️ Время ответа: ${responseTime}ms")
-                Log.d(TAG, "📊 Токенов в ответе: ~$tokenCount")
-                Log.d(TAG, "⚡ Токенов/сек: ${String.format("%.2f", tokenCount / (responseTime/1000.0))}")
+                Log.d(TAG, "📊 Токенов: ~$tokenCount")
 
                 AgentResponse(
-                    text = buildString {
-                        append("【${currentModel.displayName}】\n")
-                        append("⏱️ ${responseTime}ms | 📊 ${tokenCount} токенов | ⚡ ${String.format("%.1f", tokenCount / (responseTime/1000.0))} ток/с\n")
-                        append("━━━━━━━━━━━━━━━━━━━━━━\n\n")
-                        append(response)
-                    },
-                    toolUsed = detectTool(message),
+                    text = response,
+                    toolUsed = detectTool(history.lastOrNull { it.role == "user" }?.content ?: ""),
                     responseTimeMs = responseTime,
                     tokenCount = tokenCount
                 )
@@ -145,72 +137,44 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
         }
     }
 
-    override fun clearChatHistory() {
-        messageHistory.clear()
-        Log.d(TAG, "🧹 История чата очищена")
+    // Deprecated методы для обратной совместимости
+    @Deprecated("Use sendMessageWithHistory instead", ReplaceWith("sendMessageWithHistory(listOf(GigaMessage(role = \"user\", content = message)), temperature)"))
+    override suspend fun sendMessage(message: String): AgentResponse {
+        return sendMessage(message, 0.7)
     }
 
+    @Deprecated("Use sendMessageWithHistory instead", ReplaceWith("sendMessageWithHistory(listOf(GigaMessage(role = \"user\", content = message)), temperature)"))
+    override suspend fun sendMessage(message: String, temperature: Double): AgentResponse {
+        // Создаем историю из одного сообщения для обратной совместимости
+        val history = listOf(
+            GigaMessage(role = "user", content = message)
+        )
+        return sendMessageWithHistory(history, temperature)
+    }
+
+    override fun clearChatHistory() {
+        // Репозиторий больше не хранит историю
+        Log.d(TAG, "clearChatHistory вызван, но репозиторий не хранит историю")
+    }
+
+    // Реализация HuggingFaceRepository
     override fun setHuggingFaceModel(modelType: HuggingFaceModel) {
         currentModel = modelType
         Log.d(TAG, "🔄 Модель HuggingFace изменена на: ${modelType.displayName}")
-
-        if (modelType.taskType == TaskType.TEXT_GENERATION && messageHistory.isEmpty()) {
-            messageHistory.add(
-                HuggingFaceMessage(
-                    role = "system",
-                    content = "Ты полезный ассистент. Отвечай кратко и по делу на русском языке."
-                )
-            )
-        }
     }
 
     override fun getCurrentHuggingFaceModel(): HuggingFaceModel = currentModel
 
-    // Для моделей классификации (слабая)
-    private suspend fun queryClassificationModel(client: HttpClient, message: String): String {
-        val url = "$BASE_URL/${currentModel.modelId}"
-
-        val requestBody = buildJsonObject {
-            put("inputs", message)
-        }
-
-        Log.d(TAG, "📤 URL классификации: $url")
-
-        val response = client.post(url) {
-            contentType(ContentType.Application.Json)
-            header("Authorization", "Bearer $apiToken")
-            setBody(requestBody)
-        }
-
-        if (!response.status.isSuccess()) {
-            val error = response.bodyAsText()
-            Log.e(TAG, "Ошибка классификации: $error")
-            throw Exception("Ошибка ${currentModel.displayName}: ${response.status}")
-        }
-
-        val jsonString = response.bodyAsText()
-
-        return try {
-            val predictions = jsonParser.decodeFromString<List<ClassificationResponse>>(jsonString)
-            formatClassificationResponse(message, predictions)
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка парсинга: ${e.message}")
-            "Анализ: ${jsonString.take(200)}"
-        }
-    }
-
-    // Для генеративных моделей через новый эндпоинт
+    // Для генеративных моделей через chat completion endpoint
     private suspend fun queryTextGenerationModel(
         client: HttpClient,
-        message: String,
+        history: List<GigaMessage>,
         temperature: Double
     ): String {
-        messageHistory.add(HuggingFaceMessage(role = "user", content = message))
-
         val url = CHAT_BASE_URL
 
-        // Формируем историю сообщений в формате OpenAI
-        val messagesForApi = messageHistory.map { msg ->
+        // Конвертируем GigaMessage в формат для API
+        val messagesForApi = history.map { msg ->
             buildJsonObject {
                 put("role", msg.role)
                 put("content", msg.content)
@@ -237,34 +201,28 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
         if (!response.status.isSuccess()) {
             val error = response.bodyAsText()
             Log.e(TAG, "❌ Ошибка модели: $error")
-            messageHistory.removeLast()
             throw Exception("Ошибка ${currentModel.displayName}: ${response.status} - $error")
         }
 
         val jsonString = response.bodyAsText()
-
-        return try {
-            val answer = parseChatCompletionResponse(jsonString)
-            messageHistory.add(HuggingFaceMessage(role = "assistant", content = answer))
-            answer
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка парсинга: ${e.message}")
-            messageHistory.removeLast()
-            throw Exception("Ошибка обработки ответа: ${e.message}")
-        }
+        return parseChatCompletionResponse(jsonString)
     }
 
-    private suspend fun queryQuestionAnsweringModel(client: HttpClient, message: String): String {
-        val context = "Здесь должен быть контекст для ответа на вопрос"
-
-        val requestBody = buildJsonObject {
-            put("inputs", buildJsonObject {
-                put("question", message)
-                put("context", context)
-            })
-        }
+    // Для моделей классификации
+    private suspend fun queryClassificationModel(
+        client: HttpClient,
+        history: List<GigaMessage>
+    ): String {
+        // Берем последнее сообщение пользователя для классификации
+        val lastUserMessage = history.lastOrNull { it.role == "user" }?.content ?: ""
 
         val url = "$BASE_URL/${currentModel.modelId}"
+
+        val requestBody = buildJsonObject {
+            put("inputs", lastUserMessage)
+        }
+
+        Log.d(TAG, "📤 URL классификации: $url")
 
         val response = client.post(url) {
             contentType(ContentType.Application.Json)
@@ -272,19 +230,60 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
             setBody(requestBody)
         }
 
-        return "QA функционал в разработке"
+        if (!response.status.isSuccess()) {
+            val error = response.bodyAsText()
+            Log.e(TAG, "Ошибка классификации: $error")
+            throw Exception("Ошибка ${currentModel.displayName}: ${response.status}")
+        }
+
+        val jsonString = response.bodyAsText()
+
+        return try {
+            val predictions = jsonParser.decodeFromString<List<ClassificationResponse>>(jsonString)
+            formatClassificationResponse(lastUserMessage, predictions)
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка парсинга: ${e.message}")
+            "Анализ: ${jsonString.take(200)}"
+        }
+    }
+
+    // Для моделей вопрос-ответ
+    private suspend fun queryQuestionAnsweringModel(
+        client: HttpClient,
+        history: List<GigaMessage>
+    ): String {
+        // Здесь нужен контекст для ответа на вопрос
+        // В реальном приложении контекст должен передаваться отдельно
+        val lastUserMessage = history.lastOrNull { it.role == "user" }?.content ?: ""
+        val context = "Контекст для ответа на вопрос временно недоступен."
+
+        val requestBody = buildJsonObject {
+            put("inputs", buildJsonObject {
+                put("question", lastUserMessage)
+                put("context", context)
+            })
+        }
+
+        val url = "$BASE_URL/${currentModel.modelId}"
+
+        Log.d(TAG, "📤 URL QA: $url")
+        Log.d(TAG, "⚠️ QA функционал требует передачи контекста")
+
+        return "❌ Функционал вопрос-ответ временно недоступен. Пожалуйста, используйте текстовую модель."
     }
 
     private fun parseChatCompletionResponse(jsonString: String): String {
         return try {
             val jsonElement = jsonParser.parseToJsonElement(jsonString)
             val choices = jsonElement.jsonObject["choices"]?.jsonArray
+
             if (!choices.isNullOrEmpty()) {
                 val firstChoice = choices.first().jsonObject
                 val message = firstChoice["message"]?.jsonObject
                 message?.get("content")?.jsonPrimitive?.content ?: jsonString
             } else {
-                jsonString
+                // Fallback для старых моделей, которые возвращают generated_text
+                jsonElement.jsonObject["generated_text"]?.jsonPrimitive?.content ?: jsonString
             }
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка парсинга chat completion: ${e.message}")
@@ -302,6 +301,9 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
                 "positive" -> "😊 ПОЗИТИВНЫЙ"
                 "negative" -> "😠 НЕГАТИВНЫЙ"
                 "neutral" -> "😐 НЕЙТРАЛЬНЫЙ"
+                "LABEL_0" -> "😐 НЕЙТРАЛЬНЫЙ"
+                "LABEL_1" -> "😊 ПОЗИТИВНЫЙ"
+                "LABEL_2" -> "😠 НЕГАТИВНЫЙ"
                 else -> pred.label.uppercase()
             }
             val score = pred.score * 100
@@ -329,14 +331,3 @@ class HuggingFaceRepositoryImpl : ChatRepository, HuggingFaceRepository {
         }
     }
 }
-
-// Data классы
-//data class HuggingFaceMessage(
-//    val role: String,
-//    val content: String
-//)
-//
-//data class ClassificationResponse(
-//    val label: String,
-//    val score: Double
-//)

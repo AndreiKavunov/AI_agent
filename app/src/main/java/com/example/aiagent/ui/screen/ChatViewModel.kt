@@ -1,11 +1,11 @@
+// ui/screen/ChatViewModel.kt
 package com.example.aiagent.ui.screen
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
-import com.example.aiagent.di.AppModule
-import com.example.aiagent.domain.ChatRepository
 import com.example.aiagent.domain.RepositoryType
+import com.example.aiagent.domain.agent.UniversalAgent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,21 +13,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class ChatViewModel(
-    // Убираем параметр chatRepository из конструктора
+    private val universalAgent: UniversalAgent  // Получаем агента через конструктор
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
 
-    // Получаем репозиторий через AppModule каждый раз при обращении
-    private val chatRepository: ChatRepository
-        get() = AppModule.chatRepository
-
     init {
         _state.update {
             it.copy(
-                currentRepositoryType = AppModule.getCurrentRepositoryType(),
-                huggingFaceModel = AppModule.huggingFaceRepository?.getCurrentHuggingFaceModel() ?: HuggingFaceModel.MEDIUM
+                currentRepositoryType = universalAgent.getCurrentRepositoryType(),
+                huggingFaceModel = universalAgent.getCurrentHuggingFaceModel() ?: HuggingFaceModel.MEDIUM
             )
         }
     }
@@ -57,22 +53,19 @@ class ChatViewModel(
     }
 
     private fun newChat() {
-        viewModelScope.launch {
-            chatRepository.clearChatHistory()
-            _state.update {
-                it.copy(
-                    messages = emptyList(),
-                    error = null,
-                    lastResponseTime = null,
-                    lastTokenCount = null
-                )
-            }
+        universalAgent.clearHistory()
+        _state.update {
+            it.copy(
+                messages = emptyList(),
+                error = null,
+                lastResponseTime = null,
+                lastTokenCount = null
+            )
         }
     }
 
     private fun switchRepository(repositoryType: RepositoryType) {
-        // Переключаем репозиторий через AppModule
-        AppModule.switchRepository(repositoryType)
+        universalAgent.switchRepository(repositoryType)
 
         _state.update {
             it.copy(
@@ -82,7 +75,7 @@ class ChatViewModel(
                 lastResponseTime = null,
                 lastTokenCount = null,
                 huggingFaceModel = if (repositoryType == RepositoryType.HUGGINGFACE) {
-                    AppModule.huggingFaceRepository?.getCurrentHuggingFaceModel() ?: HuggingFaceModel.MEDIUM
+                    universalAgent.getCurrentHuggingFaceModel() ?: HuggingFaceModel.MEDIUM
                 } else {
                     it.huggingFaceModel
                 }
@@ -91,12 +84,12 @@ class ChatViewModel(
     }
 
     private fun selectHuggingFaceModel(modelType: HuggingFaceModel) {
-        AppModule.huggingFaceRepository?.setHuggingFaceModel(modelType)
+        universalAgent.setHuggingFaceModel(modelType)
 
         _state.update {
             it.copy(
                 huggingFaceModel = modelType,
-                messages = emptyList(), // Очищаем историю при смене модели
+                messages = emptyList(), // Очищаем UI историю при смене модели
                 lastResponseTime = null,
                 lastTokenCount = null
             )
@@ -122,16 +115,10 @@ class ChatViewModel(
 
         viewModelScope.launch {
             try {
-                val startTime = System.currentTimeMillis()
-
-                // Используем актуальный репозиторий
-                val response = chatRepository.sendMessage(
+                val response = universalAgent.processMessage(
                     message = text.trim(),
                     temperature = _state.value.temperature
                 )
-
-                val endTime = System.currentTimeMillis()
-                val responseTime = endTime - startTime
 
                 val agentMessage = Message.AgentMessage(
                     id = System.currentTimeMillis().toString(),
@@ -155,7 +142,7 @@ class ChatViewModel(
             } catch (e: Exception) {
                 _state.update { currentState ->
                     currentState.copy(
-                        error = "Ошибка (${_state.value.currentRepositoryType}): ${e.message}",
+                        error = "Ошибка (${universalAgent.getCurrentAgentInfo()}): ${e.message}",
                         isLoading = false
                     )
                 }
