@@ -1,56 +1,88 @@
+// domain/agent/UniversalAgentImpl.kt
 package com.example.aiagent.domain.agent
 
 import android.util.Log
+import com.example.aiagent.data.database.MessageLocalRepository
 import com.example.aiagent.data.giga.GigaChatRepository
 import com.example.aiagent.data.huggingFace.ChatMessage
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.response.AgentResponse
 import com.example.aiagent.domain.RepositoryType
-import com.example.aiagent.domain.agent.UniversalAgent
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 private const val TAG = "UniversalAgent"
 
 /**
- * Универсальный агент - единственное место, где хранится контекст диалога
+ * Универсальный агент - использует базу данных для хранения контекста диалога
  */
 class UniversalAgentImpl(
     private val gigaChatRepository: GigaChatRepository,
-    private val huggingFaceRepository: HuggingFaceRepositoryImpl
+    private val huggingFaceRepository: HuggingFaceRepositoryImpl,
+    private val localRepository: MessageLocalRepository
 ) : UniversalAgent {
 
     // Текущий тип репозитория
     private var currentType = RepositoryType.GIGACHAT
 
-    // КОНТЕКСТ ДИАЛОГА - хранится здесь!
-    private val messageHistory = mutableListOf<ChatMessage>()
-
     // Текущая модель HuggingFace (если выбрана)
     private var currentHuggingFaceModel: HuggingFaceModel? = null
 
     init {
-        // Добавляем системный промпт по умолчанию при создании
-        setSystemPrompt("Ты полезный ассистент. Отвечай кратко и по делу на русском языке.")
+        // Инициализируем системный промпт в корутине
+        CoroutineScope(Dispatchers.IO).launch {
+            initializeSystemPrompt()
+        }
+    }
+
+    private suspend fun initializeSystemPrompt() {
+        try {
+            val existingPrompt = localRepository.getSystemPrompt()
+            if (existingPrompt == null) {
+                // Если системного промпта нет, устанавливаем по умолчанию
+                setSystemPrompt("Ты полезный ассистент. Отвечай кратко и по делу на русском языке.")
+                Log.d(TAG, "✅ Системный промпт по умолчанию установлен")
+            } else {
+                Log.d(TAG, "✅ Системный промпт восстановлен из БД: \"${existingPrompt.take(50)}...\"")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка при инициализации системного промпта: ${e.message}")
+        }
     }
 
     override suspend fun processMessage(message: String, temperature: Double): AgentResponse {
         Log.d(TAG, "🚀 UniversalAgent обрабатывает сообщение через ${currentType}")
-        Log.d(TAG, "📚 История сообщений до запроса: ${messageHistory.size}")
 
-        // Добавляем сообщение пользователя в историю
-        messageHistory.add(ChatMessage(role = "user", content = message))
+        // Получаем текущую историю для логирования
+        val currentHistory = localRepository.getMessageHistory()
+        Log.d(TAG, "📚 История сообщений до запроса: ${currentHistory.size}")
+
+        // Сохраняем сообщение пользователя
+        localRepository.saveMessage(
+            role = "user",
+            content = message,
+            repositoryType = currentType,
+            modelName = currentHuggingFaceModel?.displayName
+        )
 
         return withContext(Dispatchers.IO) {
             try {
-                // Получаем историю в формате для API
-                val apiHistory = messageHistory.map {
+                // Получаем актуальную историю из БД
+                val history = localRepository.getMessageHistory()
+
+                // Конвертируем в формат для API
+                val apiHistory = history.map {
                     com.example.aiagent.data.giga.GigaMessage(
                         role = it.role,
                         content = it.content
                     )
                 }
+
+                Log.d(TAG, "📤 Отправляем историю из ${history.size} сообщений")
 
                 // Делегируем запрос соответствующему репозиторию
                 val response = when (currentType) {
@@ -68,12 +100,17 @@ class UniversalAgentImpl(
                     }
                 }
 
-                // Добавляем ответ ассистента в историю
-                messageHistory.add(ChatMessage(role = "assistant", content = response.text))
+                // Сохраняем ответ ассистента
+                localRepository.saveMessage(
+                    role = "assistant",
+                    content = response.text,
+                    repositoryType = currentType,
+                    modelName = currentHuggingFaceModel?.displayName
+                )
 
-                Log.d(TAG, "✅ Агент получил ответ. История после запроса: ${messageHistory.size}")
+                val newHistorySize = localRepository.getMessageHistory().size
+                Log.d(TAG, "✅ Агент получил ответ. История после запроса: $newHistorySize")
 
-                // Возвращаем ответ
                 AgentResponse(
                     text = response.text,
                     toolUsed = response.toolUsed,
@@ -83,44 +120,31 @@ class UniversalAgentImpl(
 
             } catch (e: Exception) {
                 Log.e(TAG, "💥 Ошибка агента: ${e.message}")
-                // В случае ошибки удаляем последнее сообщение пользователя
-                if (messageHistory.isNotEmpty() && messageHistory.last().role == "user") {
-                    messageHistory.removeAt(messageHistory.size - 1)
-                }
+                e.printStackTrace()
                 throw e
             }
         }
     }
 
-    override fun clearHistory() {
-        // Очищаем историю, но сохраняем системный промпт
-        val systemMessages = messageHistory.filter { it.role == "system" }
-
-        messageHistory.clear()
-        messageHistory.addAll(systemMessages)
-
-        Log.d(TAG, "🧹 История очищена. Системных сообщений: ${systemMessages.size}")
+    override suspend fun clearHistory() {
+        localRepository.clearHistory(keepSystemPrompt = true)
+        Log.d(TAG, "🧹 История очищена. Системный промпт сохранен")
     }
 
-    override fun clearAll() {
-        messageHistory.clear()
-        // Восстанавливаем системный промпт по умолчанию
+    override suspend fun clearAll() {
+        localRepository.clearHistory(keepSystemPrompt = false)
+        // Устанавливаем системный промпт по умолчанию
         setSystemPrompt("Ты полезный ассистент. Отвечай кратко и по делу на русском языке.")
         Log.d(TAG, "🧹 Полная очистка контекста")
     }
 
-    override fun setSystemPrompt(prompt: String) {
-        // Удаляем все системные сообщения
-        messageHistory.removeAll { it.role == "system" }
-
-        // Добавляем новое системное сообщение в начало
-        messageHistory.add(0, ChatMessage(role = "system", content = prompt))
-
+    override suspend fun setSystemPrompt(prompt: String) {
+        localRepository.setSystemPrompt(prompt)
         Log.d(TAG, "🔄 Системный промпт установлен: \"${prompt.take(50)}...\"")
     }
 
-    override fun getSystemPrompt(): String? {
-        return messageHistory.firstOrNull { it.role == "system" }?.content
+    override suspend fun getSystemPrompt(): String? {
+        return localRepository.getSystemPrompt()
     }
 
     override fun getCurrentAgentInfo(): String {
@@ -132,7 +156,7 @@ class UniversalAgentImpl(
         }
     }
 
-    override fun switchRepository(type: RepositoryType) {
+    override suspend fun switchRepository(type: RepositoryType) {
         if (currentType != type) {
             currentType = type
             // ПРИ СМЕНЕ РЕПОЗИТОРИЯ ОЧИЩАЕМ КОНТЕКСТ!
@@ -143,7 +167,7 @@ class UniversalAgentImpl(
 
     override fun getCurrentRepositoryType(): RepositoryType = currentType
 
-    override fun setHuggingFaceModel(modelType: HuggingFaceModel) {
+    override suspend fun setHuggingFaceModel(modelType: HuggingFaceModel) {
         currentHuggingFaceModel = modelType
         // При смене модели внутри HuggingFace тоже очищаем контекст
         if (currentType == RepositoryType.HUGGINGFACE) {
@@ -157,16 +181,16 @@ class UniversalAgentImpl(
     }
 
     /**
-     * Получить текущую историю сообщений (для отладки/UI)
+     * Получить текущую историю сообщений как Flow (для UI)
      */
-    fun getMessageHistory(): List<ChatMessage> = messageHistory.toList()
+    fun getMessageHistoryFlow(): Flow<List<ChatMessage>> {
+        return localRepository.getMessageHistoryFlow()
+    }
 
     /**
-     * Удалить последнее сообщение
+     * Получить текущую историю сообщений (для отладки)
      */
-    private fun removeLastMessage() {
-        if (messageHistory.isNotEmpty()) {
-            messageHistory.removeAt(messageHistory.size - 1)
-        }
+    suspend fun getMessageHistory(): List<ChatMessage> {
+        return localRepository.getMessageHistory()
     }
 }

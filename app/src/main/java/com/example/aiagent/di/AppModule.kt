@@ -1,8 +1,10 @@
 // di/AppModule.kt
 package com.example.aiagent.di
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.example.aiagent.data.database.MessageLocalRepository
 import com.example.aiagent.data.giga.GigaChatRepository
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
@@ -13,6 +15,13 @@ import com.example.aiagent.ui.screen.ChatViewModel
 
 object AppModule {
 
+    private lateinit var appContext: Context
+
+    // Инициализация модуля с контекстом приложения
+    fun init(context: Context) {
+        appContext = context.applicationContext
+    }
+
     // Репозитории (синглтоны)
     private val gigaChatRepository: GigaChatRepository by lazy {
         GigaChatRepository.getInstance()
@@ -22,11 +31,17 @@ object AppModule {
         HuggingFaceRepositoryImpl.getInstance()
     }
 
-    // УНИВЕРСАЛЬНЫЙ АГЕНТ - единственное место для работы с чатом
+    // Локальный репозиторий для работы с БД
+    private val messageLocalRepository: MessageLocalRepository by lazy {
+        MessageLocalRepository.getInstance(appContext)
+    }
+
+    // УНИВЕРСАЛЬНЫЙ АГЕНТ - использует БД для хранения истории
     val universalAgent: UniversalAgent by lazy {
         UniversalAgentImpl(
             gigaChatRepository = gigaChatRepository,
-            huggingFaceRepository = huggingFaceRepository
+            huggingFaceRepository = huggingFaceRepository,
+            localRepository = messageLocalRepository
         )
     }
 
@@ -44,13 +59,13 @@ object AppModule {
     }
 
     // Вспомогательные методы для обратной совместимости
-    fun getCurrentRepositoryType() = universalAgent.getCurrentRepositoryType()
+    suspend fun getCurrentRepositoryType() = universalAgent.getCurrentRepositoryType()
 
-    fun switchRepository(type: RepositoryType) {
+    suspend fun switchRepository(type: RepositoryType) {
         universalAgent.switchRepository(type)
     }
 
-    fun setHuggingFaceModel(modelType: HuggingFaceModel) {
+    suspend fun setHuggingFaceModel(modelType: HuggingFaceModel) {
         universalAgent.setHuggingFaceModel(modelType)
     }
 }

@@ -53,46 +53,52 @@ class ChatViewModel(
     }
 
     private fun newChat() {
-        universalAgent.clearHistory()
-        _state.update {
-            it.copy(
-                messages = emptyList(),
-                error = null,
-                lastResponseTime = null,
-                lastTokenCount = null
-            )
+        viewModelScope.launch {
+            universalAgent.clearHistory()
+            _state.update {
+                it.copy(
+                    messages = emptyList(),
+                    error = null,
+                    lastResponseTime = null,
+                    lastTokenCount = null
+                )
+            }
         }
     }
 
     private fun switchRepository(repositoryType: RepositoryType) {
-        universalAgent.switchRepository(repositoryType)
+        viewModelScope.launch {
+            universalAgent.switchRepository(repositoryType)
 
-        _state.update {
-            it.copy(
-                currentRepositoryType = repositoryType,
-                messages = emptyList(),
-                error = null,
-                lastResponseTime = null,
-                lastTokenCount = null,
-                huggingFaceModel = if (repositoryType == RepositoryType.HUGGINGFACE) {
-                    universalAgent.getCurrentHuggingFaceModel() ?: HuggingFaceModel.MEDIUM
-                } else {
-                    it.huggingFaceModel
-                }
-            )
+            _state.update {
+                it.copy(
+                    currentRepositoryType = repositoryType,
+                    messages = emptyList(),
+                    error = null,
+                    lastResponseTime = null,
+                    lastTokenCount = null,
+                    huggingFaceModel = if (repositoryType == RepositoryType.HUGGINGFACE) {
+                        universalAgent.getCurrentHuggingFaceModel() ?: HuggingFaceModel.MEDIUM
+                    } else {
+                        it.huggingFaceModel
+                    }
+                )
+            }
         }
     }
 
     private fun selectHuggingFaceModel(modelType: HuggingFaceModel) {
-        universalAgent.setHuggingFaceModel(modelType)
+        viewModelScope.launch {
+            universalAgent.setHuggingFaceModel(modelType)
 
-        _state.update {
-            it.copy(
-                huggingFaceModel = modelType,
-                messages = emptyList(), // Очищаем UI историю при смене модели
-                lastResponseTime = null,
-                lastTokenCount = null
-            )
+            _state.update {
+                it.copy(
+                    huggingFaceModel = modelType,
+                    messages = emptyList(), // Очищаем UI историю при смене модели
+                    lastResponseTime = null,
+                    lastTokenCount = null
+                )
+            }
         }
     }
 
