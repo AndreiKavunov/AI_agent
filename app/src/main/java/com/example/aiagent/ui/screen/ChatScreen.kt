@@ -1,3 +1,4 @@
+// ui/screen/ChatScreen.kt
 package com.example.aiagent.ui.screen
 
 import android.content.ClipData
@@ -30,10 +31,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
@@ -71,27 +74,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private fun copyToClipboard(context: Context, text: String) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    val clip = ClipData.newPlainText("agent_message", text)
-    clipboard.setPrimaryClip(clip)
-    Toast.makeText(context, "Сообщение скопировано", Toast.LENGTH_SHORT).show()
-}
-
-private fun formatTime(ms: Long): String {
-    return when {
-        ms < 1000 -> "${ms}ms"
-        ms < 60000 -> "${String.format("%.1f", ms / 1000.0)}с"
-        else -> "${String.format("%.1f", ms / 60000.0)}мин"
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
-//    viewModel: ChatViewModel = viewModel(factory = AppModule.viewModelFactory)
+    viewModel: ChatViewModel = viewModel(factory = AppModule.viewModelFactory)
 ) {
-    val viewModel: ChatViewModel = viewModel(factory = AppModule.viewModelFactory)
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
 
@@ -101,68 +87,13 @@ fun ChatScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.primary,
-                ),
-                title = {
-                    Column {
-                        Text("Чат-агент")
-                        Text(
-                            text = when (state.currentRepositoryType) {
-                                RepositoryType.GIGACHAT -> "GigaChat"
-                                RepositoryType.HUGGINGFACE -> "HuggingFace: ${state.huggingFaceModel.displayName}"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                actions = {
-                    // Кнопка нового чата
-                    IconButton(
-                        onClick = {
-                            viewModel.handleAction(ChatAction.NewChat)
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Новый чат",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // Кнопка переключения репозитория
-                    IconButton(
-                        onClick = { showRepositorySelector = !showRepositorySelector }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SwapHoriz,
-                            contentDescription = "Переключить провайдера",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // Кнопка настроек температуры
-                    IconButton(
-                        onClick = { showTemperature = !showTemperature }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = if (showTemperature) {
-                                "Скрыть настройки температуры"
-                            } else {
-                                "Показать настройки температуры"
-                            },
-                            tint = if (showTemperature) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                        )
-                    }
-                }
+            ChatTopBar(
+                state = state,
+                onNewChat = { viewModel.handleAction(ChatAction.NewChat) },
+                onToggleRepository = { showRepositorySelector = !showRepositorySelector },
+                onToggleTemperature = { showTemperature = !showTemperature },
+                onShowTokenDetails = { viewModel.handleAction(ChatAction.ShowTokenDetails) },
+                showTemperature = showTemperature
             )
         }
     ) { innerPadding ->
@@ -188,7 +119,6 @@ fun ChatScreen(
                     onTypeSelected = { type ->
                         viewModel.handleAction(ChatAction.SwitchRepository(type))
                         showRepositorySelector = false
-                        // Показываем селектор моделей если выбрали HuggingFace
                         if (type == RepositoryType.HUGGINGFACE) {
                             showHuggingFaceModelSelector = true
                         }
@@ -237,14 +167,28 @@ fun ChatScreen(
                 )
             }
 
-            // Статистика последнего ответа (только для HuggingFace)
-            if (state.currentRepositoryType == RepositoryType.HUGGINGFACE &&
-                state.lastResponseTime != null &&
-                state.lastTokenCount != null) {
-                ResponseStats(
-                    responseTimeMs = state.lastResponseTime ?: 0,
-                    tokenCount = state.lastTokenCount ?: 0,
-                    tokensPerSecond = state.lastTokensPerSecond,
+            // Детальная информация о токенах
+            AnimatedVisibility(
+                visible = state.showTokenDetails,
+                enter = fadeIn() + expandVertically(
+                    expandFrom = Alignment.Top,
+                    animationSpec = tween(300)
+                ),
+                exit = fadeOut() + shrinkVertically(
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = tween(300)
+                )
+            ) {
+                TokenStatsCard(
+                    stats = state.tokenStats,
+                    onDismiss = { viewModel.handleAction(ChatAction.HideTokenDetails) } // Добавляем вызов
+                )
+            }
+
+            // Статистика последнего ответа
+            state.lastResponse?.let { response ->
+                LastResponseStats(
+                    responseInfo = response,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
             }
@@ -279,11 +223,305 @@ fun ChatScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ResponseStats(
-    responseTimeMs: Long,
-    tokenCount: Int,
-    tokensPerSecond: Double?,
+fun ChatTopBar(
+    state: ChatState,
+    onNewChat: () -> Unit,
+    onToggleRepository: () -> Unit,
+    onToggleTemperature: () -> Unit,
+    onShowTokenDetails: () -> Unit,
+    showTemperature: Boolean
+) {
+    TopAppBar(
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            titleContentColor = MaterialTheme.colorScheme.primary,
+        ),
+        title = {
+            Column {
+                Text("Чат-агент")
+                Text(
+                    text = when (state.currentRepositoryType) {
+                        RepositoryType.GIGACHAT -> "GigaChat"
+                        RepositoryType.HUGGINGFACE -> "HuggingFace: ${state.huggingFaceModel.displayName}"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        actions = {
+            // Информация о токенах
+            IconButton(
+                onClick = onShowTokenDetails
+            ) {
+                BadgedIcon(
+                    badgeCount = state.tokenStats.totalTokens,
+                    icon = Icons.Outlined.Info,
+                    contentDescription = "Информация о токенах"
+                )
+            }
+
+            // Кнопка нового чата
+            IconButton(onClick = onNewChat) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Новый чат",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Кнопка переключения репозитория
+            IconButton(onClick = onToggleRepository) {
+                Icon(
+                    imageVector = Icons.Default.SwapHoriz,
+                    contentDescription = "Переключить провайдера",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Кнопка настроек температуры
+            IconButton(onClick = onToggleTemperature) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = if (showTemperature) {
+                        "Скрыть настройки температуры"
+                    } else {
+                        "Показать настройки температуры"
+                    },
+                    tint = if (showTemperature) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
+        }
+    )
+}
+
+@Composable
+fun BadgedIcon(
+    badgeCount: Int,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String?
+) {
+    Box {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (badgeCount > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(12.dp)
+                    .padding(2.dp)
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxSize(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text(
+                        text = badgeCount.toString(),
+                        fontSize = 8.sp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.padding(1.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TokenStatsCard(
+    stats: TokenStats,
+    onDismiss: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "📊 Статистика токенов",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                IconButton(
+                    onClick = onDismiss, // Теперь вызывает hideTokenDetails
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Закрыть",
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            TokenProgressBar(stats)
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            TokenStatsDetails(stats)
+        }
+    }
+}
+
+@Composable
+fun TokenProgressBar(stats: TokenStats) {
+    if (stats.totalTokens == 0) {
+        Text(
+            text = "Нет данных о токенах",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+        )
+        return
+    }
+
+    Column {
+        // Системные токены
+        TokenProgressSegment(
+            label = "Системные",
+            value = stats.systemTokens,
+            total = stats.totalTokens,
+            color = MaterialTheme.colorScheme.tertiary
+        )
+
+        // Токены пользователя
+        TokenProgressSegment(
+            label = "Пользователь",
+            value = stats.userTokens,
+            total = stats.totalTokens,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        // Токены ассистента
+        TokenProgressSegment(
+            label = "Ассистент",
+            value = stats.assistantTokens,
+            total = stats.totalTokens,
+            color = MaterialTheme.colorScheme.secondary
+        )
+    }
+}
+
+@Composable
+fun TokenProgressSegment(
+    label: String,
+    value: Int,
+    total: Int,
+    color: androidx.compose.ui.graphics.Color
+) {
+    val percentage = if (total > 0) value.toFloat() / total else 0f
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer
+        )
+        Text(
+            text = "$value (${(percentage * 100).toInt()}%)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            fontWeight = FontWeight.Bold
+        )
+    }
+
+    // Прогресс бар
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(4.dp)
+            .padding(vertical = 2.dp)
+    ) {
+        // Фон
+        Card(
+            modifier = Modifier.fillMaxSize(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.1f)
+            )
+        ) {}
+
+        // Заполнение
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(percentage)
+                .height(4.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = color
+            )
+        ) {}
+    }
+
+    Spacer(modifier = Modifier.height(4.dp))
+}
+
+@Composable
+fun TokenStatsDetails(stats: TokenStats) {
+    Column {
+        DetailRow("Всего токенов:", stats.totalTokens.toString())
+        DetailRow("Последний ответ:", stats.lastResponseTokens?.toString() ?: "нет данных")
+        DetailRow("Текущий запрос:", stats.currentQueryTokens.toString())
+
+        if (stats.totalTokens > 0) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Примерная стоимость: ~$${"%.6f".format(stats.totalTokens * 0.000002)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+            )
+        }
+    }
+}
+
+@Composable
+fun DetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+fun LastResponseStats(
+    responseInfo: LastResponseInfo,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -309,29 +547,42 @@ fun ResponseStats(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = formatTime(responseTimeMs),
+                    text = formatTime(responseInfo.timeMs),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            // Разделитель
             Text(
                 text = "•",
                 color = MaterialTheme.colorScheme.onSecondaryContainer
             )
 
-            // Количество токенов
+            // Токены в ответе
             Text(
-                text = "${tokenCount} токенов",
+                text = "${responseInfo.tokenCount} отв.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                 fontWeight = FontWeight.Bold
             )
 
-            // Скорость (если есть)
-            tokensPerSecond?.let { tps ->
+            // Токены в промпте (если есть)
+            responseInfo.promptTokens?.let { promptTokens ->
+                Text(
+                    text = "•",
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Text(
+                    text = "${promptTokens} пром.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Скорость
+            responseInfo.tokensPerSecond?.let { tps ->
                 Text(
                     text = "•",
                     color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -368,7 +619,6 @@ fun RepositorySelector(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // GigaChat
             RepositoryOption(
                 type = RepositoryType.GIGACHAT,
                 displayName = "GigaChat",
@@ -377,7 +627,6 @@ fun RepositorySelector(
                 onClick = { onTypeSelected(RepositoryType.GIGACHAT) }
             )
 
-            // HuggingFace
             RepositoryOption(
                 type = RepositoryType.HUGGINGFACE,
                 displayName = "HuggingFace",
@@ -575,7 +824,6 @@ fun UserMessageItem(message: Message.UserMessage) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                // Время отправки
                 Text(
                     text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.timestamp)),
                     style = MaterialTheme.typography.labelSmall,
@@ -628,7 +876,7 @@ fun AgentMessageItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    // Статистика ответа (если есть)
+                    // Статистика ответа
                     if (message.responseTimeMs > 0 || message.tokenCount > 0) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
@@ -657,7 +905,22 @@ fun AgentMessageItem(
                                 )
                             }
                             Text(
-                                text = "${message.tokenCount} токенов",
+                                text = "${message.tokenCount} ток.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        // Токены в промпте (если есть)
+                        message.promptTokens?.let { promptTokens ->
+                            Text(
+                                text = " | ",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            Text(
+                                text = "${promptTokens} пром.",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                 fontWeight = FontWeight.Medium
@@ -683,10 +946,10 @@ fun AgentMessageItem(
                                 labelColor = MaterialTheme.colorScheme.onTertiaryContainer
                             )
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
                     }
 
                     // Время получения ответа
-                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.timestamp)),
                         style = MaterialTheme.typography.labelSmall,
@@ -702,7 +965,7 @@ fun AgentMessageItem(
                 modifier = Modifier.padding(top = 8.dp)
             )
 
-            // Дополнительная информация при длинном нажатии
+            // Подсказка о копировании
             Text(
                 text = "Долгое нажатие для копирования",
                 style = MaterialTheme.typography.labelSmall,
@@ -837,5 +1100,21 @@ fun TemperatureSlider(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+// Вспомогательные функции
+private fun copyToClipboard(context: Context, text: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val clip = ClipData.newPlainText("agent_message", text)
+    clipboard.setPrimaryClip(clip)
+    Toast.makeText(context, "Сообщение скопировано", Toast.LENGTH_SHORT).show()
+}
+
+private fun formatTime(ms: Long): String {
+    return when {
+        ms < 1000 -> "${ms}ms"
+        ms < 60000 -> "${String.format("%.1f", ms / 1000.0)}с"
+        else -> "${String.format("%.1f", ms / 60000.0)}мин"
     }
 }

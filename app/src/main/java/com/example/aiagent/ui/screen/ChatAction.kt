@@ -11,4 +11,6 @@ sealed interface ChatAction {
     object NewChat : ChatAction
     data class SwitchRepository(val repositoryType: RepositoryType) : ChatAction
     data class SelectHuggingFaceModel(val modelType: HuggingFaceModel) : ChatAction
+    object ShowTokenDetails : ChatAction
+    object HideTokenDetails : ChatAction
 }

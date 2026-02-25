@@ -39,8 +39,10 @@ data class ChatCompletionRequest(
 
 @Serializable
 data class ChatMessage(
+    val id: String = "",
     val role: String,
-    val content: String
+    val content: String,
+    val realTokenCount: Int? = null // Реальные токены из API
 )
 
 @Serializable

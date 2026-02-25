@@ -6,12 +6,13 @@ import java.util.Date
 
 @Entity(tableName = "messages")
 data class MessageEntity(
-    @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
-    val sessionId: String, // для поддержки разных сессий, если понадобится
-    val role: String, // "system", "user", "assistant"
+    @PrimaryKey
+    val id: String,
+    val sessionId: String,
+    val role: String,
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val repositoryType: String, // тип репозитория для контекста
-    val modelName: String? = null // для HF моделей
+    val repositoryType: String,
+    val modelName: String? = null,
+    val realTokenCount: Int? = null // Добавляем реальные токены
 )

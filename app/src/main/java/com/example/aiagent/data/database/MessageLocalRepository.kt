@@ -1,4 +1,3 @@
-
 package com.example.aiagent.data.database
 
 import android.content.Context
@@ -14,10 +13,8 @@ class MessageLocalRepository private constructor(
     private val context: Context
 ) {
 
-    // Используем SharedPreferences для сохранения sessionId между запусками
     private val prefs: SharedPreferences = context.getSharedPreferences("ai_agent_prefs", Context.MODE_PRIVATE)
 
-    // Получаем или создаем постоянный sessionId
     private val currentSessionId: String by lazy {
         var sessionId = prefs.getString("session_id", null)
         if (sessionId == null) {
@@ -28,42 +25,53 @@ class MessageLocalRepository private constructor(
     }
 
     suspend fun saveMessage(
+        id: String,
         role: String,
         content: String,
         repositoryType: RepositoryType,
-        modelName: String? = null
+        modelName: String? = null,
+        realTokenCount: Int? = null
     ) {
         val entity = MessageEntity(
+            id = id,
             sessionId = currentSessionId,
             role = role,
             content = content,
             repositoryType = repositoryType.name,
-            modelName = modelName
+            modelName = modelName,
+            realTokenCount = realTokenCount
         )
         messageDao.insertMessage(entity)
     }
 
-    suspend fun saveMessages(messages: List<ChatMessage>, repositoryType: RepositoryType, modelName: String? = null) {
-        val entities = messages.map { chatMessage ->
-            MessageEntity(
-                sessionId = currentSessionId,
-                role = chatMessage.role,
-                content = chatMessage.content,
-                repositoryType = repositoryType.name,
-                modelName = modelName
-            )
-        }
-        messageDao.insertAllMessages(entities)
+    suspend fun deleteMessage(messageId: String) {
+        messageDao.deleteMessageById(messageId) // Исправлено название метода
     }
 
     suspend fun getMessageHistory(): List<ChatMessage> {
         return messageDao.getMessagesForSession(currentSessionId)
-            .map { entity -> ChatMessage(entity.role, entity.content) }
+            .map { entity ->
+                ChatMessage(
+                    id = entity.id,
+                    role = entity.role,
+                    content = entity.content,
+                    realTokenCount = entity.realTokenCount
+                )
+            }
     }
 
     fun getMessageHistoryFlow(): Flow<List<ChatMessage>> {
         return messageDao.getMessagesFlow(currentSessionId)
-            .map { entities -> entities.map { ChatMessage(it.role, it.content) } }
+            .map { entities ->
+                entities.map {
+                    ChatMessage(
+                        id = it.id,
+                        role = it.role,
+                        content = it.content,
+                        realTokenCount = it.realTokenCount
+                    )
+                }
+            }
     }
 
     suspend fun clearHistory(keepSystemPrompt: Boolean) {
@@ -75,17 +83,18 @@ class MessageLocalRepository private constructor(
     }
 
     suspend fun setSystemPrompt(prompt: String) {
-        // Проверяем, есть ли уже системное сообщение
         val existingSystem = messageDao.getSystemMessage(currentSessionId)
 
         if (existingSystem == null) {
-            // Если нет - создаем новое
+            // Если нет - создаем новое с ID
             messageDao.insertMessage(
                 MessageEntity(
+                    id = UUID.randomUUID().toString(), // Добавил ID
                     sessionId = currentSessionId,
                     role = "system",
                     content = prompt,
-                    repositoryType = "system"
+                    repositoryType = "system",
+                    realTokenCount = null
                 )
             )
         } else {
@@ -98,14 +107,18 @@ class MessageLocalRepository private constructor(
         return messageDao.getSystemMessage(currentSessionId)?.content
     }
 
-    // Метод для сброса сессии (если нужно начать новую)
     suspend fun resetSession() {
-        // Очищаем все сообщения текущей сессии
         messageDao.deleteAllMessages(currentSessionId)
-
-        // Генерируем новый sessionId
         val newSessionId = UUID.randomUUID().toString()
         prefs.edit().putString("session_id", newSessionId).apply()
+    }
+
+    suspend fun removeLastMessage() {
+        val messages = messageDao.getMessagesForSession(currentSessionId)
+        if (messages.isNotEmpty()) {
+            val lastMessage = messages.last()
+            messageDao.deleteMessageById(lastMessage.id) // Исправлено
+        }
     }
 
     companion object {

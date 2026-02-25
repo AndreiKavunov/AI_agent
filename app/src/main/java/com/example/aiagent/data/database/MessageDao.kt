@@ -1,6 +1,5 @@
 package com.example.aiagent.data.database
 
-
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
@@ -38,14 +37,18 @@ interface MessageDao {
     suspend fun updateSystemMessage(sessionId: String, newContent: String) {
         // Удаляем старые системные сообщения
         deleteSystemMessages(sessionId)
-        // Вставляем новое
-        insertMessage(
-            MessageEntity(
-                sessionId = sessionId,
-                role = "system",
-                content = newContent,
-                repositoryType = "system"
-            )
+        // Вставляем новое сгенерируем id внутри метода
+        val newMessage = MessageEntity(
+            id = java.util.UUID.randomUUID().toString(), // Генерируем ID здесь
+            sessionId = sessionId,
+            role = "system",
+            content = newContent,
+            repositoryType = "system",
+            realTokenCount = null
         )
+        insertMessage(newMessage)
     }
+
+    @Query("DELETE FROM messages WHERE id = :messageId")
+    suspend fun deleteMessageById(messageId: String) // Изменил на String
 }

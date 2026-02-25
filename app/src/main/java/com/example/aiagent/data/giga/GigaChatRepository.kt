@@ -25,6 +25,7 @@ import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.security.cert.X509Certificate
 import java.util.UUID
@@ -32,6 +33,11 @@ import javax.net.ssl.X509TrustManager
 
 private const val TAG = "GigaChat"
 
+/**
+ * Репозиторий для работы с GigaChat API
+ * Отвечает только за отправку запросов и получение ответов
+ * Подсчёт токенов и детект инструментов вынесены в агент
+ */
 class GigaChatRepository : ChatRepository {
 
     private val authKey = BuildConfig.GIGACHAT_AUTH_KEY
@@ -160,7 +166,8 @@ class GigaChatRepository : ChatRepository {
                 val answer = chatResponseObj.choices.firstOrNull()?.message?.content
                     ?: throw Exception("Ответ не найден в JSON")
 
-                val tokenCount = chatResponseObj.usage?.total_tokens ?: estimateTokenCount(answer)
+                // Получаем количество токенов из ответа API (если есть)
+                val tokenCount = chatResponseObj.usage?.total_tokens ?: 0
                 val formattedAnswer = formatAnswer(answer)
 
                 val endTime = System.currentTimeMillis()
@@ -168,12 +175,12 @@ class GigaChatRepository : ChatRepository {
 
                 Log.d(TAG, "✅ Успех! Ответ получен (${answer.length} символов)")
                 Log.d(TAG, "⏱️ Время ответа: ${responseTime}ms")
-                Log.d(TAG, "📊 Токенов: $tokenCount")
-                Log.d(TAG, "⚡ Токенов/сек: ${String.format("%.2f", tokenCount / (responseTime/1000.0))}")
+                Log.d(TAG, "📊 Токенов (из API): $tokenCount")
 
+                // Возвращаем только базовый ответ, без лишних вычислений
                 AgentResponse(
                     text = formattedAnswer,
-                    toolUsed = detectTool(history.lastOrNull { it.role == "user" }?.content ?: ""),
+                    toolUsed = null, // Детект инструментов теперь в агенте
                     responseTimeMs = responseTime,
                     tokenCount = tokenCount
                 )
@@ -190,12 +197,18 @@ class GigaChatRepository : ChatRepository {
     }
 
     // Deprecated методы для обратной совместимости
-    @Deprecated("Use sendMessageWithHistory instead", ReplaceWith("sendMessageWithHistory(listOf(GigaMessage(role = \"user\", content = message)), temperature)"))
+    @Deprecated(
+        "Use sendMessageWithHistory instead",
+        ReplaceWith("sendMessageWithHistory(listOf(GigaMessage(role = \"user\", content = message)), temperature)")
+    )
     override suspend fun sendMessage(message: String): AgentResponse {
         return sendMessage(message, 0.7)
     }
 
-    @Deprecated("Use sendMessageWithHistory instead", ReplaceWith("sendMessageWithHistory(listOf(GigaMessage(role = \"user\", content = message)), temperature)"))
+    @Deprecated(
+        "Use sendMessageWithHistory instead",
+        ReplaceWith("sendMessageWithHistory(listOf(GigaMessage(role = \"user\", content = message)), temperature)")
+    )
     override suspend fun sendMessage(message: String, temperature: Double): AgentResponse {
         // Создаем историю из одного сообщения для обратной совместимости
         val history = listOf(
@@ -260,33 +273,5 @@ class GigaChatRepository : ChatRepository {
         return answer.trim()
             .replace("\\n\\n\\n+".toRegex(), "\n\n") // Убираем лишние пустые строки
             .replace("\\s+".toRegex(), " ")          // Убираем лишние пробелы
-    }
-
-    private fun estimateTokenCount(text: String): Int {
-        // Грубая оценка: для русского и английского ~4 символа на токен
-        return (text.length / 4).coerceAtLeast(1)
-    }
-
-    private fun detectTool(message: String): String? {
-        val normalized = message.lowercase()
-
-        return when {
-            normalized.contains("погод") -> "get_weather"
-            normalized.contains("считай") ||
-                    normalized.contains("посчитай") ||
-                    normalized.contains("сколько будет") -> "calculate"
-            normalized.contains("курс") ||
-                    normalized.contains("доллар") ||
-                    normalized.contains("евро") -> "get_exchange_rate"
-            normalized.contains("перевод") -> "translate"
-            else -> null
-        }
-    }
-
-    // Метод для очистки кеша токена
-    fun clearTokenCache() {
-        cachedToken = null
-        tokenExpiryTime = 0
-        Log.d(TAG, "🧹 Кеш токена очищен")
     }
 }

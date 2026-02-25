@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.domain.RepositoryType
 import com.example.aiagent.domain.agent.UniversalAgent
+import com.example.aiagent.domain.agent.UniversalAgentImpl
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,17 +14,47 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class ChatViewModel(
-    private val universalAgent: UniversalAgent  // Получаем агента через конструктор
+    private val universalAgent: UniversalAgent
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            loadInitialData()
+        }
+    }
+
+    private suspend fun loadInitialData() {
+        // НЕ загружаем историю сообщений из БД в UI
+        // Загружаем только настройки и статистику
         _state.update {
             it.copy(
                 currentRepositoryType = universalAgent.getCurrentRepositoryType(),
                 huggingFaceModel = universalAgent.getCurrentHuggingFaceModel() ?: HuggingFaceModel.MEDIUM
+            )
+        }
+
+        // Загружаем статистику токенов (опционально, для отображения в UI)
+        refreshTokenStats()
+    }
+
+    private suspend fun refreshTokenStats() {
+        val tokenStats = universalAgent.getTotalHistoryTokens()
+        val lastResponseTokens = universalAgent.getLastResponseTokens()
+        val currentQueryTokens = universalAgent.getCurrentQueryTokens()
+
+        _state.update {
+            it.copy(
+                tokenStats = TokenStats(
+                    totalTokens = tokenStats.totalTokens,
+                    systemTokens = tokenStats.systemTokens,
+                    userTokens = tokenStats.userTokens,
+                    assistantTokens = tokenStats.assistantTokens,
+                    lastResponseTokens = lastResponseTokens,
+                    currentQueryTokens = currentQueryTokens
+                )
             )
         }
     }
@@ -37,6 +68,8 @@ class ChatViewModel(
             is ChatAction.NewChat -> newChat()
             is ChatAction.SwitchRepository -> switchRepository(action.repositoryType)
             is ChatAction.SelectHuggingFaceModel -> selectHuggingFaceModel(action.modelType)
+            is ChatAction.ShowTokenDetails -> showTokenDetails()
+            is ChatAction.HideTokenDetails -> hideTokenDetails()
         }
     }
 
@@ -57,10 +90,11 @@ class ChatViewModel(
             universalAgent.clearHistory()
             _state.update {
                 it.copy(
-                    messages = emptyList(),
+                    messages = emptyList(), // Очищаем UI сообщения
                     error = null,
-                    lastResponseTime = null,
-                    lastTokenCount = null
+                    lastResponse = null,
+                    tokenStats = TokenStats(),
+                    showTokenDetails = false
                 )
             }
         }
@@ -73,10 +107,11 @@ class ChatViewModel(
             _state.update {
                 it.copy(
                     currentRepositoryType = repositoryType,
-                    messages = emptyList(),
+                    messages = emptyList(), // Очищаем UI сообщения
                     error = null,
-                    lastResponseTime = null,
-                    lastTokenCount = null,
+                    lastResponse = null,
+                    tokenStats = TokenStats(),
+                    showTokenDetails = false,
                     huggingFaceModel = if (repositoryType == RepositoryType.HUGGINGFACE) {
                         universalAgent.getCurrentHuggingFaceModel() ?: HuggingFaceModel.MEDIUM
                     } else {
@@ -94,12 +129,24 @@ class ChatViewModel(
             _state.update {
                 it.copy(
                     huggingFaceModel = modelType,
-                    messages = emptyList(), // Очищаем UI историю при смене модели
-                    lastResponseTime = null,
-                    lastTokenCount = null
+                    messages = emptyList(), // Очищаем UI сообщения
+                    lastResponse = null,
+                    tokenStats = TokenStats(),
+                    showTokenDetails = false
                 )
             }
         }
+    }
+
+    private fun showTokenDetails() {
+        viewModelScope.launch {
+            refreshTokenStats()
+            _state.update { it.copy(showTokenDetails = true) }
+        }
+    }
+
+    private fun hideTokenDetails() {
+        _state.update { it.copy(showTokenDetails = false) }
     }
 
     private fun sendMessage(text: String) {
@@ -115,7 +162,8 @@ class ChatViewModel(
                 messages = currentState.messages + userMessage,
                 inputText = "",
                 isLoading = true,
-                error = null
+                error = null,
+                showTokenDetails = false
             )
         }
 
@@ -126,23 +174,31 @@ class ChatViewModel(
                     temperature = _state.value.temperature
                 )
 
+                // Обновляем статистику токенов
+                refreshTokenStats()
+
                 val agentMessage = Message.AgentMessage(
                     id = System.currentTimeMillis().toString(),
                     content = response.text,
                     toolUsed = response.toolUsed,
                     responseTimeMs = response.responseTimeMs,
-                    tokenCount = response.tokenCount
+                    tokenCount = response.tokenCount,
+                    promptTokens = response.promptTokens,
+                    totalHistoryTokens = response.totalHistoryTokens
                 )
 
                 _state.update { currentState ->
                     currentState.copy(
                         messages = currentState.messages + agentMessage,
                         isLoading = false,
-                        lastResponseTime = response.responseTimeMs,
-                        lastTokenCount = response.tokenCount,
-                        lastTokensPerSecond = if (response.responseTimeMs > 0) {
-                            response.tokenCount / (response.responseTimeMs / 1000.0)
-                        } else null
+                        lastResponse = LastResponseInfo(
+                            timeMs = response.responseTimeMs,
+                            tokenCount = response.tokenCount,
+                            promptTokens = response.promptTokens,
+                            tokensPerSecond = if (response.responseTimeMs > 0) {
+                                response.tokenCount / (response.responseTimeMs / 1000.0)
+                            } else null
+                        )
                     )
                 }
             } catch (e: Exception) {
