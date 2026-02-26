@@ -65,10 +65,8 @@ class UniversalAgentImpl(
     override suspend fun processMessage(message: String, temperature: Double): AgentResponse {
         Log.d(TAG, "🚀 UniversalAgent обрабатывает сообщение через ${currentType}")
 
-        // Генерируем ID для сообщения пользователя
         val userMessageId = UUID.randomUUID().toString()
 
-        // Сохраняем сообщение пользователя
         localRepository.saveMessage(
             id = userMessageId,
             role = "user",
@@ -77,20 +75,30 @@ class UniversalAgentImpl(
             modelName = currentHuggingFaceModel?.displayName
         )
 
-        Log.d(TAG, "💬 Сообщение пользователя сохранено: $userMessageId")
-
         return withContext(Dispatchers.IO) {
             try {
-                // Получаем контекст через SummaryManager
-                val context = summaryManager.getHistoryForApi(currentType)
+                // Получаем сообщения для API через SummaryManager
+                val messagesForApi = summaryManager.getMessagesForApi()
 
-                // Строим историю для API
-                val apiHistory = buildApiHistory(context)
+                // Конвертируем в GigaMessage
+                val apiHistory = summaryManager.toGigaMessages(messagesForApi)
 
-                // Считаем токены промпта
-                val promptTokens = calculatePromptTokens(context)
+                // Логируем для проверки
+                Log.d(TAG, "📤 Отправка в API (${apiHistory.size} сообщений):")
+                apiHistory.forEachIndexed { index, msg ->
+                    val preview = if (msg.role == "system") {
+                        msg.content.take(150) + "..."
+                    } else {
+                        msg.content.take(50) + "..."
+                    }
+                    Log.d(TAG, "   [$index] ${msg.role}: $preview")
+                }
 
-                Log.d(TAG, "📤 Отправка запроса в API...")
+                // Проверяем, что system сообщение только одно
+                val systemCount = apiHistory.count { it.role == "system" }
+                if (systemCount != 1) {
+                    Log.e(TAG, "❌ КРИТИЧЕСКАЯ ОШИБКА: в истории ${systemCount} system сообщений!")
+                }
 
                 // Отправляем запрос
                 val response = when (currentType) {
@@ -108,12 +116,8 @@ class UniversalAgentImpl(
                     }
                 }
 
-                Log.d(TAG, "📥 Получен ответ от API: ${response.text.take(100)}...")
-
-                // Сохраняем ответ ассистента
+                // Сохраняем ответ
                 val assistantMessageId = UUID.randomUUID().toString()
-                realTokenCounts[assistantMessageId] = response.tokenCount
-
                 localRepository.saveMessage(
                     id = assistantMessageId,
                     role = "assistant",
@@ -123,70 +127,25 @@ class UniversalAgentImpl(
                     realTokenCount = response.tokenCount
                 )
 
-                // Запускаем проверку необходимости суммаризации (в фоне)
+                // Запускаем проверку суммаризации
                 summaryManager.checkAndSummarizeIfNeeded(currentType)
-
-                // Подсчитываем итоговые токены
-                val totalTokens = calculateTotalTokens()
-
-                Log.d(TAG, "📊 Статистика:")
-                Log.d(TAG, "   ├─ Токенов в промпте: $promptTokens")
-                Log.d(TAG, "   ├─ Токенов в ответе: ${response.tokenCount}")
-                Log.d(TAG, "   └─ Всего токенов: $totalTokens")
 
                 AgentResponse(
                     text = response.text,
                     toolUsed = response.toolUsed,
                     responseTimeMs = response.responseTimeMs,
                     tokenCount = response.tokenCount,
-                    promptTokens = promptTokens,
-                    totalHistoryTokens = totalTokens
+                    promptTokens = response.tokenCount ?: 0,
+                    totalHistoryTokens = response.tokenCount ?: 0
                 )
 
             } catch (e: Exception) {
                 Log.e(TAG, "💥 Ошибка: ${e.message}")
                 e.printStackTrace()
-                // В случае ошибки удаляем сообщение пользователя
                 localRepository.deleteMessage(userMessageId)
                 throw e
             }
         }
-    }
-
-    private fun buildApiHistory(context: SummaryManager.HistoryContext): List<GigaMessage> {
-        val history = mutableListOf<GigaMessage>()
-
-        // Добавляем суммаризации как системные сообщения
-        context.summaries.forEachIndexed { index, summary ->
-            history.add(
-                GigaMessage(
-                    role = "system",
-                    content = "[Суммаризация части диалога ${index + 1}]: ${summary.summary}"
-                )
-            )
-        }
-
-        // Добавляем свежие сообщения
-        history.addAll(
-            context.freshMessages.map {
-                GigaMessage(role = it.role, content = it.content)
-            }
-        )
-
-        return history
-    }
-
-    private suspend fun calculatePromptTokens(context: SummaryManager.HistoryContext): Int {
-        val messagesTokens = context.freshMessages.sumOf { msg ->
-            msg.realTokenCount ?: tokenCounter.estimateTokens(
-                msg.content,
-                isSystemPrompt = msg.role == "system"
-            )
-        }
-
-        val summariesTokens = context.summaries.sumOf { it.tokenCount }
-
-        return messagesTokens + summariesTokens
     }
 
     private suspend fun calculateTotalTokens(): Int {

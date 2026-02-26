@@ -1,3 +1,4 @@
+// domain/summary/SummaryManager.kt
 package com.example.aiagent.domain.agent.summary
 
 import android.util.Log
@@ -6,6 +7,7 @@ import com.example.aiagent.data.database.MessageLocalRepository
 import com.example.aiagent.data.database.SummaryDao
 import com.example.aiagent.data.database.SummaryEntity
 import com.example.aiagent.data.giga.GigaChatRepository
+import com.example.aiagent.data.giga.GigaMessage
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
 import com.example.aiagent.data.response.AgentResponse
 import com.example.aiagent.domain.RepositoryType
@@ -16,7 +18,6 @@ import java.util.UUID
 
 private const val TAG = "SummaryManager"
 
-// domain/summary/SummaryManager.kt
 class SummaryManager(
     private val localRepository: MessageLocalRepository,
     private val summaryDao: SummaryDao,
@@ -31,10 +32,11 @@ class SummaryManager(
 
     /**
      * Получает историю с учетом суммаризаций для отправки в API
+     * Возвращает список MessageEntity в правильном порядке
      */
-    suspend fun getHistoryForApi(currentType: RepositoryType): HistoryContext {
+    suspend fun getMessagesForApi(): List<MessageEntity> {
         val allMessages = localRepository.getAllMessages()
-        val sessionId = localRepository.provideSessionId() // Используем новый метод
+        val sessionId = localRepository.provideSessionId()
         val summaries = summaryDao.getSummariesForSession(sessionId)
 
         // Отделяем системные сообщения
@@ -44,31 +46,85 @@ class SummaryManager(
         // Определяем, какие сообщения уже суммаризованы
         val summarizedMessageIds = getSummarizedMessageIds(nonSystemMessages, summaries)
 
-        // Свежие сообщения = системные + последние MAX_FRESH_MESSAGES несуммаризованных
+        // Свежие сообщения = последние MAX_FRESH_MESSAGES несуммаризованных
         val freshNonSystemMessages = nonSystemMessages
             .filterNot { summarizedMessageIds.contains(it.id) }
             .takeLast(MAX_FRESH_MESSAGES)
 
-        val freshMessages = (systemMessages + freshNonSystemMessages)
-            .sortedBy { it.timestamp }
+        // Получаем оригинальный системный промпт
+        val systemPrompt = systemMessages.firstOrNull()?.content ?: "Ты полезный ассистент. Отвечай кратко и по делу на русском языке."
 
-        // Логируем состав контекста
+        // Объединяем все суммаризации в один текст
+        val combinedSummary = if (summaries.isNotEmpty()) {
+            buildCombinedSummary(summaries)
+        } else {
+            null
+        }
+
+        // Формируем финальное system сообщение
+        val finalSystemContent = if (combinedSummary != null) {
+            """
+                $systemPrompt
+                
+                Краткое содержание предыдущего диалога:
+                $combinedSummary
+            """.trimIndent()
+        } else {
+            systemPrompt
+        }
+
+        // Строим финальный список сообщений
+        val finalMessages = buildList {
+            // Добавляем объединенное system сообщение
+            add(
+                MessageEntity(
+                    id = "system_combined_${UUID.randomUUID()}",
+                    sessionId = sessionId,
+                    role = "system",
+                    content = finalSystemContent,
+                    timestamp = System.currentTimeMillis(),
+                    repositoryType = "system",
+                    modelName = null,
+                    realTokenCount = summaries.sumOf { it.tokenCount } // Примерный подсчет
+                )
+            )
+
+            // Добавляем все свежие сообщения
+            addAll(freshNonSystemMessages)
+        }
+
+        // Логирование
         Log.d(TAG, "📊 Контекст для API:")
-        Log.d(TAG, "   ├─ Системных сообщений: ${systemMessages.size}")
-        Log.d(TAG, "   ├─ Суммаризаций: ${summaries.size}")
+        Log.d(TAG, "   ├─ Системный промпт (объединен${if (summaries.isNotEmpty()) " + ${summaries.size} суммаризаций" else ""})")
         Log.d(TAG, "   ├─ Свежих сообщений: ${freshNonSystemMessages.size}")
-        Log.d(TAG, "   └─ Всего элементов: ${freshMessages.size + summaries.size}")
+        Log.d(TAG, "   ├─ Всего элементов: ${finalMessages.size}")
 
         if (summaries.isNotEmpty()) {
             Log.d(TAG, "   └─ Суммаризации покрывают ${summaries.sumOf { it.messageCount }} старых сообщений")
         }
 
-        return HistoryContext(
-            freshMessages = freshMessages,
-            summaries = summaries,
-            allMessagesCount = allMessages.size,
-            summarizedCount = summarizedMessageIds.size
-        )
+        return finalMessages
+    }
+
+    /**
+     * Конвертирует MessageEntity в GigaMessage для отправки в API
+     */
+    fun toGigaMessages(messages: List<MessageEntity>): List<GigaMessage> {
+        return messages.map { entity ->
+            GigaMessage(
+                role = entity.role,
+                content = entity.content
+            )
+        }
+    }
+
+    /**
+     * Объединяет все суммаризации в один текст
+     */
+    private fun buildCombinedSummary(summaries: List<SummaryEntity>): String {
+        return summaries.joinToString("\n\n") { summary ->
+            "• ${summary.summary}"
+        }
     }
 
     /**
@@ -151,7 +207,7 @@ class SummaryManager(
             .take(SUMMARY_INTERVAL)
 
         return if (batch.size == SUMMARY_INTERVAL) {
-            Log.d(TAG, "📦 Найдена партия для суммаризации: с ${batch.first().timestamp} по ${batch.last().timestamp}")
+            Log.d(TAG, "📦 Найдена партия для суммаризации: ${batch.size} сообщений")
             batch
         } else {
             null
@@ -177,8 +233,7 @@ class SummaryManager(
         Log.d(TAG, "   ├─ ID: ${summary.id}")
         Log.d(TAG, "   ├─ Текст: ${response.text.take(100)}...")
         Log.d(TAG, "   ├─ Токенов: $summaryTokens")
-        Log.d(TAG, "   ├─ Покрывает сообщения: ${messages.first().id} - ${messages.last().id}")
-        Log.d(TAG, "   └─ Всего сообщений: ${messages.size}")
+        Log.d(TAG, "   └─ Покрывает сообщений: ${messages.size}")
     }
 
     private fun getSummarizedMessageIds(
@@ -219,11 +274,4 @@ class SummaryManager(
             Суммаризация:
         """.trimIndent()
     }
-
-    data class HistoryContext(
-        val freshMessages: List<MessageEntity>,
-        val summaries: List<SummaryEntity>,
-        val allMessagesCount: Int,
-        val summarizedCount: Int
-    )
 }
