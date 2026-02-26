@@ -1,3 +1,4 @@
+// data/database/MessageLocalRepository.kt
 package com.example.aiagent.data.database
 
 import android.content.Context
@@ -15,14 +16,17 @@ class MessageLocalRepository private constructor(
 
     private val prefs: SharedPreferences = context.getSharedPreferences("ai_agent_prefs", Context.MODE_PRIVATE)
 
-    private val currentSessionId: String by lazy {
+    // Убираем lazy property и делаем функцию для получения sessionId
+    private fun getCurrentSessionIdInternal(): String {
         var sessionId = prefs.getString("session_id", null)
         if (sessionId == null) {
             sessionId = UUID.randomUUID().toString()
             prefs.edit().putString("session_id", sessionId).apply()
         }
-        sessionId
+        return sessionId
     }
+
+    // ========== Базовые операции с сообщениями ==========
 
     suspend fun saveMessage(
         id: String,
@@ -34,7 +38,7 @@ class MessageLocalRepository private constructor(
     ) {
         val entity = MessageEntity(
             id = id,
-            sessionId = currentSessionId,
+            sessionId = getCurrentSessionIdInternal(),
             role = role,
             content = content,
             repositoryType = repositoryType.name,
@@ -45,11 +49,15 @@ class MessageLocalRepository private constructor(
     }
 
     suspend fun deleteMessage(messageId: String) {
-        messageDao.deleteMessageById(messageId) // Исправлено название метода
+        messageDao.deleteMessageById(messageId)
+    }
+
+    suspend fun getAllMessages(): List<MessageEntity> {
+        return messageDao.getMessagesForSession(getCurrentSessionIdInternal())
     }
 
     suspend fun getMessageHistory(): List<ChatMessage> {
-        return messageDao.getMessagesForSession(currentSessionId)
+        return messageDao.getMessagesForSession(getCurrentSessionIdInternal())
             .map { entity ->
                 ChatMessage(
                     id = entity.id,
@@ -61,7 +69,7 @@ class MessageLocalRepository private constructor(
     }
 
     fun getMessageHistoryFlow(): Flow<List<ChatMessage>> {
-        return messageDao.getMessagesFlow(currentSessionId)
+        return messageDao.getMessagesFlow(getCurrentSessionIdInternal())
             .map { entities ->
                 entities.map {
                     ChatMessage(
@@ -74,23 +82,44 @@ class MessageLocalRepository private constructor(
             }
     }
 
+    // ========== Управление историей ==========
+
     suspend fun clearHistory(keepSystemPrompt: Boolean) {
+        val sessionId = getCurrentSessionIdInternal()
         if (keepSystemPrompt) {
-            messageDao.deleteNonSystemMessages(currentSessionId)
+            messageDao.deleteNonSystemMessages(sessionId)
         } else {
-            messageDao.deleteAllMessages(currentSessionId)
+            messageDao.deleteAllMessages(sessionId)
         }
     }
 
+    suspend fun removeLastMessage() {
+        val sessionId = getCurrentSessionIdInternal()
+        val messages = messageDao.getMessagesForSession(sessionId)
+        if (messages.isNotEmpty()) {
+            val lastMessage = messages.last()
+            messageDao.deleteMessageById(lastMessage.id)
+        }
+    }
+
+    suspend fun resetSession() {
+        val oldSessionId = getCurrentSessionIdInternal()
+        messageDao.deleteAllMessages(oldSessionId)
+        val newSessionId = UUID.randomUUID().toString()
+        prefs.edit().putString("session_id", newSessionId).apply()
+    }
+
+    // ========== Системный промпт ==========
+
     suspend fun setSystemPrompt(prompt: String) {
-        val existingSystem = messageDao.getSystemMessage(currentSessionId)
+        val sessionId = getCurrentSessionIdInternal()
+        val existingSystem = messageDao.getSystemMessage(sessionId)
 
         if (existingSystem == null) {
-            // Если нет - создаем новое с ID
             messageDao.insertMessage(
                 MessageEntity(
-                    id = UUID.randomUUID().toString(), // Добавил ID
-                    sessionId = currentSessionId,
+                    id = UUID.randomUUID().toString(),
+                    sessionId = sessionId,
                     role = "system",
                     content = prompt,
                     repositoryType = "system",
@@ -98,28 +127,21 @@ class MessageLocalRepository private constructor(
                 )
             )
         } else {
-            // Если есть - обновляем
-            messageDao.updateSystemMessage(currentSessionId, prompt)
+            messageDao.updateSystemMessage(sessionId, prompt)
         }
     }
 
     suspend fun getSystemPrompt(): String? {
-        return messageDao.getSystemMessage(currentSessionId)?.content
+        val sessionId = getCurrentSessionIdInternal()
+        return messageDao.getSystemMessage(sessionId)?.content
     }
 
-    suspend fun resetSession() {
-        messageDao.deleteAllMessages(currentSessionId)
-        val newSessionId = UUID.randomUUID().toString()
-        prefs.edit().putString("session_id", newSessionId).apply()
-    }
+    // ========== Геттеры ==========
 
-    suspend fun removeLastMessage() {
-        val messages = messageDao.getMessagesForSession(currentSessionId)
-        if (messages.isNotEmpty()) {
-            val lastMessage = messages.last()
-            messageDao.deleteMessageById(lastMessage.id) // Исправлено
-        }
-    }
+    fun getMessageDao(): MessageDao = messageDao
+
+    // Переименовываем метод, чтобы избежать конфликта
+    fun provideSessionId(): String = getCurrentSessionIdInternal()
 
     companion object {
         @Volatile
@@ -128,7 +150,10 @@ class MessageLocalRepository private constructor(
         fun getInstance(context: Context): MessageLocalRepository {
             return INSTANCE ?: synchronized(this) {
                 val database = AppDatabase.getInstance(context)
-                MessageLocalRepository(database.messageDao(), context.applicationContext).also {
+                MessageLocalRepository(
+                    database.messageDao(),
+                    context.applicationContext
+                ).also {
                     INSTANCE = it
                 }
             }

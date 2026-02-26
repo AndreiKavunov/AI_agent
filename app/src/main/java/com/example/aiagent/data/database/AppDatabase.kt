@@ -1,4 +1,4 @@
-// data/local/database/AppDatabase.kt
+// data/database/AppDatabase.kt
 package com.example.aiagent.data.database
 
 import androidx.room.Database
@@ -7,13 +7,17 @@ import androidx.room.RoomDatabase
 import android.content.Context
 
 @Database(
-    entities = [MessageEntity::class],
-    version = 1,
+    entities = [
+        MessageEntity::class,
+        SummaryEntity::class
+    ],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun messageDao(): MessageDao
+    abstract fun summaryDao(): SummaryDao
 
     companion object {
         @Volatile

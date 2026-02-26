@@ -4,7 +4,9 @@ package com.example.aiagent.di
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.example.aiagent.data.database.AppDatabase
 import com.example.aiagent.data.database.MessageLocalRepository
+import com.example.aiagent.data.database.SummaryDao
 import com.example.aiagent.data.giga.GigaChatRepository
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
@@ -20,6 +22,16 @@ object AppModule {
     // Инициализация модуля с контекстом приложения
     fun init(context: Context) {
         appContext = context.applicationContext
+    }
+
+    // База данных
+    private val appDatabase: AppDatabase by lazy {
+        AppDatabase.getInstance(appContext)
+    }
+
+    // DAO
+    private val summaryDao: SummaryDao by lazy {
+        appDatabase.summaryDao()
     }
 
     // Репозитории (синглтоны)
@@ -41,7 +53,8 @@ object AppModule {
         UniversalAgentImpl(
             gigaChatRepository = gigaChatRepository,
             huggingFaceRepository = huggingFaceRepository,
-            localRepository = messageLocalRepository
+            localRepository = messageLocalRepository,
+            summaryDao = summaryDao  // Добавляем недостающий параметр
         )
     }
 
