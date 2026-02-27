@@ -1,13 +1,20 @@
+// domain/agent/UniversalAgent.kt
 package com.example.aiagent.domain.agent
 
+import com.example.aiagent.data.huggingFace.ChatMessage
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.response.AgentResponse
 import com.example.aiagent.domain.RepositoryType
+import com.example.aiagent.domain.contextStrategy.ContextStrategy
+import com.example.aiagent.domain.contextStrategy.DialogBranch
+import com.example.aiagent.domain.contextStrategy.DialogFact
 
 interface UniversalAgent {
+    // Основные методы
     suspend fun processMessage(message: String, temperature: Double): AgentResponse
     suspend fun clearHistory()
     suspend fun clearAll()
+    suspend fun setTemperature(temperature: Double)
     suspend fun setSystemPrompt(prompt: String)
     suspend fun getSystemPrompt(): String?
     fun getCurrentAgentInfo(): String
@@ -16,9 +23,59 @@ interface UniversalAgent {
     suspend fun setHuggingFaceModel(modelType: HuggingFaceModel)
     fun getCurrentHuggingFaceModel(): HuggingFaceModel?
 
-    // Новые методы для подсчёта токенов
+    // Методы для подсчёта токенов
     suspend fun getCurrentQueryTokens(): Int
     suspend fun getTotalHistoryTokens(): DetailedTokenCount
     suspend fun getLastResponseTokens(): Int?
     fun getTokenCounter(): TokenCounter
+
+    // ========== Методы для работы со стратегиями контекста ==========
+
+    /**
+     * Устанавливает стратегию управления контекстом
+     */
+    suspend fun setContextStrategy(strategy: ContextStrategy)
+
+    /**
+     * Возвращает текущую стратегию управления контекстом
+     */
+    fun getCurrentContextStrategy(): ContextStrategy
+
+    /**
+     * Возвращает текущие факты, извлеченные из диалога
+     */
+    fun getCurrentFacts(): Map<String, DialogFact>
+
+    /**
+     * Возвращает список всех веток диалога
+     */
+    fun getBranches(): List<DialogBranch>
+
+    /**
+     * Возвращает ID текущей ветки (если используется стратегия Branching)
+     */
+    fun getCurrentBranchId(): String?
+
+    /**
+     * Создает новую ветку от указанного сообщения
+     * @return true если ветка создана успешно
+     */
+    suspend fun createBranch(checkpointMessageId: String, branchName: String): Boolean
+
+    /**
+     * Переключается на указанную ветку
+     * @return true если переключение успешно
+     */
+    suspend fun switchBranch(branchId: String): Boolean
+
+    /**
+     * Удаляет указанную ветку
+     * @return true если ветка удалена успешно
+     */
+    suspend fun deleteBranch(branchId: String): Boolean
+
+    /**
+     * Возвращает сообщения для текущего контекста
+     */
+    suspend fun getMessages(): List<ChatMessage>
 }

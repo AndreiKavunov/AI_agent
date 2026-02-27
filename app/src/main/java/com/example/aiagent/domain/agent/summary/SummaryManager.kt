@@ -26,8 +26,8 @@ class SummaryManager(
 ) {
 
     companion object {
-        const val MAX_FRESH_MESSAGES = 10
-        const val SUMMARY_INTERVAL = 5
+        const val MAX_FRESH_MESSAGES = 100
+        const val SUMMARY_INTERVAL = 50
     }
 
     /**

@@ -13,13 +13,14 @@ import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
 import com.example.aiagent.domain.RepositoryType
 import com.example.aiagent.domain.agent.UniversalAgent
 import com.example.aiagent.domain.agent.UniversalAgentImpl
+import com.example.aiagent.domain.contextStrategy.ContextStrategyManager
+import com.example.aiagent.domain.contextStrategy.FactExtractor
 import com.example.aiagent.ui.screen.ChatViewModel
 
 object AppModule {
 
     private lateinit var appContext: Context
 
-    // Инициализация модуля с контекстом приложения
     fun init(context: Context) {
         appContext = context.applicationContext
     }
@@ -34,7 +35,7 @@ object AppModule {
         appDatabase.summaryDao()
     }
 
-    // Репозитории (синглтоны)
+    // Репозитории
     private val gigaChatRepository: GigaChatRepository by lazy {
         GigaChatRepository.getInstance()
     }
@@ -43,18 +44,35 @@ object AppModule {
         HuggingFaceRepositoryImpl.getInstance()
     }
 
-    // Локальный репозиторий для работы с БД
+    // Локальный репозиторий
     private val messageLocalRepository: MessageLocalRepository by lazy {
         MessageLocalRepository.getInstance(appContext)
     }
 
-    // УНИВЕРСАЛЬНЫЙ АГЕНТ - использует БД для хранения истории
+    // Экстрактор фактов
+    private val factExtractor: FactExtractor by lazy {
+        FactExtractor(
+            gigaChatRepository = gigaChatRepository,
+            huggingFaceRepository = huggingFaceRepository
+        )
+    }
+
+    // Менеджер стратегий контекста
+    private val contextStrategyManager: ContextStrategyManager by lazy {
+        ContextStrategyManager(
+            localRepository = messageLocalRepository,
+            factExtractor = factExtractor
+        )
+    }
+
+    // УНИВЕРСАЛЬНЫЙ АГЕНТ
     val universalAgent: UniversalAgent by lazy {
         UniversalAgentImpl(
             gigaChatRepository = gigaChatRepository,
             huggingFaceRepository = huggingFaceRepository,
             localRepository = messageLocalRepository,
-            summaryDao = summaryDao  // Добавляем недостающий параметр
+            summaryDao = summaryDao,
+            contextStrategyManager = contextStrategyManager
         )
     }
 
@@ -71,7 +89,6 @@ object AppModule {
         }
     }
 
-    // Вспомогательные методы для обратной совместимости
     suspend fun getCurrentRepositoryType() = universalAgent.getCurrentRepositoryType()
 
     suspend fun switchRepository(type: RepositoryType) {

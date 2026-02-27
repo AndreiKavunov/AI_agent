@@ -3,6 +3,9 @@ package com.example.aiagent.ui.screen
 
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.domain.RepositoryType
+import com.example.aiagent.domain.contextStrategy.ContextStrategy
+import com.example.aiagent.domain.contextStrategy.DialogBranch
+import com.example.aiagent.domain.contextStrategy.DialogFact
 
 sealed interface Message {
     val id: String
@@ -21,8 +24,14 @@ sealed interface Message {
         val toolUsed: String? = null,
         val responseTimeMs: Long = 0,
         val tokenCount: Int = 0,
-        val promptTokens: Int? = null,  // Токены в промпте
-        val totalHistoryTokens: Int? = null, // Всего токенов в истории
+        val promptTokens: Int? = null,
+        val totalHistoryTokens: Int? = null,
+        override val timestamp: Long = System.currentTimeMillis()
+    ) : Message
+
+    data class SystemMessage(
+        override val id: String,
+        override val content: String,
         override val timestamp: Long = System.currentTimeMillis()
     ) : Message
 }
@@ -65,5 +74,16 @@ data class ChatState(
     val huggingFaceModel: HuggingFaceModel = HuggingFaceModel.MEDIUM,
     val lastResponse: LastResponseInfo? = null,
     val tokenStats: TokenStats = TokenStats(),
-    val showTokenDetails: Boolean = false
+    val showTokenDetails: Boolean = false,
+
+    // Новые поля для стратегий контекста
+    val currentContextStrategy: ContextStrategy = ContextStrategy.SlidingWindow(),
+    val showContextSettings: Boolean = false,
+    val facts: Map<String, DialogFact> = emptyMap(),
+    val branches: List<DialogBranch> = emptyList(),
+    val currentBranchId: String? = null,
+    val slidingWindowSize: Int = 10,
+    val showBranchDialog: Boolean = false,
+    val selectedMessageForBranch: String? = null,
+    val branchNameInput: String = ""
 )

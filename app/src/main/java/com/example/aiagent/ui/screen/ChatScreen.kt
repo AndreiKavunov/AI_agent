@@ -30,6 +30,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Send
@@ -37,6 +40,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
@@ -64,12 +68,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.di.AppModule
 import com.example.aiagent.domain.RepositoryType
+import com.example.aiagent.domain.contextStrategy.ContextStrategy
+import com.example.aiagent.domain.contextStrategy.DialogBranch
+import com.example.aiagent.domain.contextStrategy.DialogFact
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -83,7 +91,10 @@ fun ChatScreen(
 
     var showTemperature by remember { mutableStateOf(false) }
     var showRepositorySelector by remember { mutableStateOf(false) }
-    var showHuggingFaceModelSelector by remember { mutableStateOf(false) }
+    var showContextSettings by remember { mutableStateOf(false) }
+    var showHuggingFaceSelector by remember { mutableStateOf(false) }
+    var branchNameInput by remember { mutableStateOf("") }
+    var selectedMessageForBranch by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -92,8 +103,10 @@ fun ChatScreen(
                 onNewChat = { viewModel.handleAction(ChatAction.NewChat) },
                 onToggleRepository = { showRepositorySelector = !showRepositorySelector },
                 onToggleTemperature = { showTemperature = !showTemperature },
+                onToggleContextSettings = { showContextSettings = !showContextSettings },
                 onShowTokenDetails = { viewModel.handleAction(ChatAction.ShowTokenDetails) },
-                showTemperature = showTemperature
+                showTemperature = showTemperature,
+                showContextSettings = showContextSettings
             )
         }
     ) { innerPadding ->
@@ -120,7 +133,7 @@ fun ChatScreen(
                         viewModel.handleAction(ChatAction.SwitchRepository(type))
                         showRepositorySelector = false
                         if (type == RepositoryType.HUGGINGFACE) {
-                            showHuggingFaceModelSelector = true
+                            showHuggingFaceSelector = true
                         }
                     }
                 )
@@ -128,7 +141,7 @@ fun ChatScreen(
 
             // Селектор модели HuggingFace
             AnimatedVisibility(
-                visible = showHuggingFaceModelSelector && state.currentRepositoryType == RepositoryType.HUGGINGFACE,
+                visible = showHuggingFaceSelector && state.currentRepositoryType == RepositoryType.HUGGINGFACE,
                 enter = fadeIn() + expandVertically(
                     expandFrom = Alignment.Top,
                     animationSpec = tween(300)
@@ -142,8 +155,34 @@ fun ChatScreen(
                     currentModel = state.huggingFaceModel,
                     onModelSelected = { model ->
                         viewModel.handleAction(ChatAction.SelectHuggingFaceModel(model))
-                        showHuggingFaceModelSelector = false
-                    }
+                        showHuggingFaceSelector = false
+                    },
+                    onDismiss = { showHuggingFaceSelector = false }
+                )
+            }
+
+            // Панель настроек контекста
+            AnimatedVisibility(
+                visible = showContextSettings,
+                enter = fadeIn() + expandVertically(
+                    expandFrom = Alignment.Top,
+                    animationSpec = tween(300)
+                ),
+                exit = fadeOut() + shrinkVertically(
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = tween(300)
+                )
+            ) {
+                ContextStrategySelector(
+                    currentStrategy = state.currentContextStrategy,
+                    slidingWindowSize = state.slidingWindowSize,
+                    onStrategySelected = { strategy ->
+                        viewModel.handleAction(ChatAction.SelectContextStrategy(strategy))
+                    },
+                    onSlidingWindowSizeChange = { size ->
+                        viewModel.handleAction(ChatAction.UpdateSlidingWindowSize(size))
+                    },
+                    onDismiss = { showContextSettings = false }
                 )
             }
 
@@ -167,6 +206,29 @@ fun ChatScreen(
                 )
             }
 
+            // Панель с фактами (для стратегии Sticky Facts)
+            if (state.currentContextStrategy is ContextStrategy.StickyFacts && state.facts.isNotEmpty()) {
+                FactsPanel(
+                    facts = state.facts,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+
+            // Панель с ветками (для стратегии Branching)
+            if (state.currentContextStrategy is ContextStrategy.Branching && state.branches.isNotEmpty()) {
+                BranchesPanel(
+                    branches = state.branches,
+                    currentBranchId = state.currentBranchId,
+                    onSwitchBranch = { branchId ->
+                        viewModel.handleAction(ChatAction.SwitchBranch(branchId))
+                    },
+                    onDeleteBranch = { branchId ->
+                        viewModel.handleAction(ChatAction.DeleteBranch(branchId))
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+
             // Детальная информация о токенах
             AnimatedVisibility(
                 visible = state.showTokenDetails,
@@ -181,7 +243,7 @@ fun ChatScreen(
             ) {
                 TokenStatsCard(
                     stats = state.tokenStats,
-                    onDismiss = { viewModel.handleAction(ChatAction.HideTokenDetails) } // Добавляем вызов
+                    onDismiss = { viewModel.handleAction(ChatAction.HideTokenDetails) }
                 )
             }
 
@@ -200,6 +262,10 @@ fun ChatScreen(
                 onAgentMessageLongClick = { messageContent ->
                     copyToClipboard(context, messageContent)
                 },
+                onMessageLongClickForBranch = if (state.currentContextStrategy is ContextStrategy.Branching) { messageId ->
+                    selectedMessageForBranch = messageId
+                    branchNameInput = ""
+                } else null,
                 modifier = Modifier.weight(1f)
             )
 
@@ -221,6 +287,26 @@ fun ChatScreen(
             }
         }
     }
+
+    // Диалог создания ветки
+    if (selectedMessageForBranch != null) {
+        CreateBranchDialog(
+            messageContent = state.messages.find { it.id == selectedMessageForBranch }?.content ?: "",
+            branchName = branchNameInput,
+            onBranchNameChange = { branchNameInput = it },
+            onConfirm = {
+                selectedMessageForBranch?.let { messageId ->
+                    viewModel.handleAction(ChatAction.CreateBranch(messageId, branchNameInput))
+                    selectedMessageForBranch = null
+                    branchNameInput = ""
+                }
+            },
+            onDismiss = {
+                selectedMessageForBranch = null
+                branchNameInput = ""
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -230,8 +316,10 @@ fun ChatTopBar(
     onNewChat: () -> Unit,
     onToggleRepository: () -> Unit,
     onToggleTemperature: () -> Unit,
+    onToggleContextSettings: () -> Unit,
     onShowTokenDetails: () -> Unit,
-    showTemperature: Boolean
+    showTemperature: Boolean,
+    showContextSettings: Boolean
 ) {
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
@@ -243,8 +331,8 @@ fun ChatTopBar(
                 Text("Чат-агент")
                 Text(
                     text = when (state.currentRepositoryType) {
-                        RepositoryType.GIGACHAT -> "GigaChat"
-                        RepositoryType.HUGGINGFACE -> "HuggingFace: ${state.huggingFaceModel.displayName}"
+                        RepositoryType.GIGACHAT -> "GigaChat • ${state.currentContextStrategy.name}"
+                        RepositoryType.HUGGINGFACE -> "HuggingFace: ${state.huggingFaceModel.displayName} • ${state.currentContextStrategy.name}"
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -260,6 +348,19 @@ fun ChatTopBar(
                     badgeCount = state.tokenStats.totalTokens,
                     icon = Icons.Outlined.Info,
                     contentDescription = "Информация о токенах"
+                )
+            }
+
+            // Кнопка настроек контекста
+            IconButton(onClick = onToggleContextSettings) {
+                Icon(
+                    imageVector = Icons.Default.Article,
+                    contentDescription = "Настройки контекста",
+                    tint = if (showContextSettings) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 )
             }
 
@@ -327,7 +428,7 @@ fun BadgedIcon(
                     )
                 ) {
                     Text(
-                        text = badgeCount.toString(),
+                        text = minOf(badgeCount, 99).toString(),
                         fontSize = 8.sp,
                         color = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.padding(1.dp)
@@ -336,6 +437,399 @@ fun BadgedIcon(
             }
         }
     }
+}
+
+@Composable
+fun ContextStrategySelector(
+    currentStrategy: ContextStrategy,
+    slidingWindowSize: Int,
+    onStrategySelected: (ContextStrategy) -> Unit,
+    onSlidingWindowSizeChange: (Int) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "🎯 Стратегия управления контекстом",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Закрыть"
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Sliding Window стратегия
+            StrategyOption(
+                strategy = ContextStrategy.SlidingWindow(slidingWindowSize),
+                isSelected = currentStrategy is ContextStrategy.SlidingWindow,
+                onClick = { onStrategySelected(ContextStrategy.SlidingWindow(slidingWindowSize)) }
+            )
+
+            if (currentStrategy is ContextStrategy.SlidingWindow) {
+                SlidingWindowSizeControl(
+                    size = slidingWindowSize,
+                    onSizeChange = onSlidingWindowSizeChange
+                )
+            }
+
+            // Sticky Facts стратегия
+            StrategyOption(
+                strategy = ContextStrategy.StickyFacts(slidingWindowSize),
+                isSelected = currentStrategy is ContextStrategy.StickyFacts,
+                onClick = { onStrategySelected(ContextStrategy.StickyFacts(slidingWindowSize)) }
+            )
+
+            // Branching стратегия
+            StrategyOption(
+                strategy = ContextStrategy.Branching(),
+                isSelected = currentStrategy is ContextStrategy.Branching,
+                onClick = { onStrategySelected(ContextStrategy.Branching()) }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Текущая стратегия: ${currentStrategy.name}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Text(
+                text = currentStrategy.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+fun StrategyOption(
+    strategy: ContextStrategy,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = isSelected,
+            onClick = onClick
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Column {
+            Text(
+                text = strategy.name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isSelected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = strategy.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+fun SlidingWindowSizeControl(
+    size: Int,
+    onSizeChange: (Int) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 32.dp, top = 4.dp, bottom = 8.dp)
+    ) {
+        Text(
+            text = "Размер окна: $size сообщений",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Slider(
+            value = size.toFloat(),
+            onValueChange = { onSizeChange(it.toInt()) },
+            valueRange = 1f..30f,
+            steps = 29
+        )
+    }
+}
+
+@Composable
+fun FactsPanel(
+    facts: Map<String, DialogFact>,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Bookmark,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "📌 Важные факты",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            facts.values.take(5).forEach { fact ->
+                FactItem(fact = fact)
+            }
+
+            if (facts.size > 5) {
+                Text(
+                    text = "... и еще ${facts.size - 5} фактов",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun FactItem(fact: DialogFact) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = fact.key.replace("_", " ").replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() } + ":",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onTertiaryContainer,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            modifier = Modifier.weight(0.4f)
+        )
+        Text(
+            text = fact.value,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onTertiaryContainer,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(0.6f)
+        )
+    }
+}
+
+@Composable
+fun BranchesPanel(
+    branches: List<DialogBranch>,
+    currentBranchId: String?,
+    onSwitchBranch: (String) -> Unit,
+    onDeleteBranch: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CallSplit,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "🌿 Ветки диалога",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Text(
+                    text = "Долгое нажатие на сообщение для создания ветки",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            branches.forEach { branch ->
+                BranchItem(
+                    branch = branch,
+                    isCurrent = branch.id == currentBranchId,
+                    onSwitch = { onSwitchBranch(branch.id) },
+                    onDelete = { onDeleteBranch(branch.id) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun BranchItem(
+    branch: DialogBranch,
+    isCurrent: Boolean,
+    onSwitch: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSwitch() }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RadioButton(
+                selected = isCurrent,
+                onClick = onSwitch
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Column {
+                Text(
+                    text = branch.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isCurrent) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Сообщений: ${branch.messages.size}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        if (!isCurrent) {
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Удалить ветку",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CreateBranchDialog(
+    messageContent: String,
+    branchName: String,
+    onBranchNameChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Создать ветку") },
+        text = {
+            Column {
+                Text(
+                    text = "Создать ветку от сообщения:",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Text(
+                        text = messageContent.take(100) + if (messageContent.length > 100) "..." else "",
+                        modifier = Modifier.padding(8.dp),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = branchName,
+                    onValueChange = onBranchNameChange,
+                    label = { Text("Название ветки") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Text(
+                text = "Создать",
+                modifier = Modifier
+                    .clickable(enabled = branchName.isNotBlank()) { onConfirm() }
+                    .padding(8.dp),
+                color = if (branchName.isNotBlank())
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+            )
+        },
+        dismissButton = {
+            Text(
+                text = "Отмена",
+                modifier = Modifier
+                    .clickable { onDismiss() }
+                    .padding(8.dp),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    )
 }
 
 @Composable
@@ -365,7 +859,7 @@ fun TokenStatsCard(
                     color = MaterialTheme.colorScheme.onSecondaryContainer
                 )
                 IconButton(
-                    onClick = onDismiss, // Теперь вызывает hideTokenDetails
+                    onClick = onDismiss,
                     modifier = Modifier.size(24.dp)
                 ) {
                     Icon(
@@ -682,6 +1176,7 @@ fun RepositoryOption(
 fun HuggingFaceModelSelector(
     currentModel: HuggingFaceModel,
     onModelSelected: (HuggingFaceModel) -> Unit,
+    onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -692,10 +1187,23 @@ fun HuggingFaceModelSelector(
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
-            Text(
-                text = "Выберите модель HuggingFace:",
-                style = MaterialTheme.typography.titleSmall
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Выберите модель HuggingFace:",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Закрыть",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -703,7 +1211,10 @@ fun HuggingFaceModelSelector(
                 ModelOption(
                     model = model,
                     isSelected = currentModel == model,
-                    onClick = { onModelSelected(model) }
+                    onClick = {
+                        onModelSelected(model)
+                        onDismiss()
+                    }
                 )
             }
         }
@@ -753,6 +1264,7 @@ fun MessagesList(
     messages: List<Message>,
     isLoading: Boolean,
     onAgentMessageLongClick: (String) -> Unit,
+    onMessageLongClickForBranch: ((String) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     if (messages.isEmpty() && !isLoading) {
@@ -774,6 +1286,14 @@ fun MessagesList(
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (onMessageLongClickForBranch != null) {
+                    Spacer(modifier = Modifier.size(16.dp))
+                    Text(
+                        text = "💡 Долгое нажатие на сообщение создаст ветку",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                    )
+                }
             }
         }
     } else {
@@ -789,11 +1309,16 @@ fun MessagesList(
 
             items(messages.reversed()) { message ->
                 when (message) {
-                    is Message.UserMessage -> UserMessageItem(message)
+                    is Message.UserMessage -> UserMessageItem(
+                        message = message,
+                        onLongClick = onMessageLongClickForBranch?.let { { it(message.id) } }
+                    )
                     is Message.AgentMessage -> AgentMessageItem(
                         message = message,
-                        onLongClick = { onAgentMessageLongClick(message.content) }
+                        onLongClick = { onAgentMessageLongClick(message.content) },
+                        onBranchClick = onMessageLongClickForBranch?.let { { it(message.id) } }
                     )
+                    is Message.SystemMessage -> SystemMessageItem(message)
                 }
             }
         }
@@ -801,11 +1326,25 @@ fun MessagesList(
 }
 
 @Composable
-fun UserMessageItem(message: Message.UserMessage) {
+fun UserMessageItem(
+    message: Message.UserMessage,
+    onLongClick: (() -> Unit)?
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 4.dp)
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = { },
+                        onLongClick = onLongClick,
+                        onLongClickLabel = "Создать ветку от этого сообщения"
+                    )
+                } else {
+                    Modifier
+                }
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer
         )
@@ -836,6 +1375,17 @@ fun UserMessageItem(message: Message.UserMessage) {
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 4.dp)
             )
+
+            if (onLongClick != null) {
+                Text(
+                    text = "Долгое нажатие для создания ветки",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .padding(top = 4.dp)
+                )
+            }
         }
     }
 }
@@ -843,7 +1393,8 @@ fun UserMessageItem(message: Message.UserMessage) {
 @Composable
 fun AgentMessageItem(
     message: Message.AgentMessage,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onBranchClick: (() -> Unit)?
 ) {
     Card(
         modifier = Modifier
@@ -965,14 +1516,60 @@ fun AgentMessageItem(
                 modifier = Modifier.padding(top = 8.dp)
             )
 
-            // Подсказка о копировании
-            Text(
-                text = "Долгое нажатие для копирования",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+            // Подсказки
+            Row(
                 modifier = Modifier
-                    .align(Alignment.End)
-                    .padding(top = 4.dp)
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                if (onBranchClick != null) {
+                    Text(
+                        text = "Долгое нажатие для создания ветки",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                }
+                Text(
+                    text = "Долгое нажатие для копирования",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SystemMessageItem(
+    message: Message.SystemMessage
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = message.content,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.weight(1f)
             )
         }
     }
