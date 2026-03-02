@@ -23,4 +23,13 @@ sealed interface ChatAction {
     data class SwitchBranch(val branchId: String) : ChatAction
     data class DeleteBranch(val branchId: String) : ChatAction
     data class UpdateSlidingWindowSize(val size: Int) : ChatAction
+    
+    // Действия для изучения языков
+    data class UpdateLanguageToLearn(val language: String) : ChatAction
+    data class UpdateLearningGoal(val goal: String) : ChatAction
+    data class UpdateCurrentLevel(val level: String) : ChatAction
+    object IncrementLessonsCompleted : ChatAction
+    object IncrementExercisesCompleted : ChatAction
+    data class AddCorrectAnswer(val memoryId: String) : ChatAction
+    data class AddIncorrectAnswer(val memoryId: String) : ChatAction
 }

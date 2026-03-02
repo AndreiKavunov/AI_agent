@@ -7,6 +7,8 @@ import androidx.lifecycle.ViewModelProvider
 import com.example.aiagent.data.database.AppDatabase
 import com.example.aiagent.data.database.MessageLocalRepository
 import com.example.aiagent.data.database.SummaryDao
+import com.example.aiagent.data.database.memory.MemoryDao
+import com.example.aiagent.data.database.memory.MemoryRepository
 import com.example.aiagent.data.giga.GigaChatRepository
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
@@ -35,6 +37,10 @@ object AppModule {
         appDatabase.summaryDao()
     }
 
+    private val memoryDao: MemoryDao by lazy {
+        appDatabase.memoryDao()
+    }
+
     // Репозитории
     private val gigaChatRepository: GigaChatRepository by lazy {
         GigaChatRepository.getInstance()
@@ -47,6 +53,11 @@ object AppModule {
     // Локальный репозиторий
     private val messageLocalRepository: MessageLocalRepository by lazy {
         MessageLocalRepository.getInstance(appContext)
+    }
+
+    // Репозиторий памяти
+    private val memoryRepository: MemoryRepository by lazy {
+        MemoryRepository(memoryDao)
     }
 
     // Экстрактор фактов

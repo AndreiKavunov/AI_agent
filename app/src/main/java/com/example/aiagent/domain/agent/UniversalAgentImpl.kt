@@ -378,4 +378,90 @@ class UniversalAgentImpl(
             else -> localRepository.getMessageHistory()
         }
     }
+
+    // ========== Методы для изучения языков ==========
+
+    override fun saveLanguageToLearn(language: String?) {
+        localRepository.saveLanguageToLearn(language)
+        Log.d(TAG, "💾 Сохранен язык для изучения: $language")
+    }
+
+    override fun getLanguageToLearn(): String? {
+        return localRepository.getLanguageToLearn()
+    }
+
+    override fun saveLearningGoal(goal: String?) {
+        localRepository.saveLearningGoal(goal)
+        Log.d(TAG, "💾 Сохранена цель обучения: $goal")
+    }
+
+    override fun getLearningGoal(): String? {
+        return localRepository.getLearningGoal()
+    }
+
+    override fun saveCurrentLevel(level: String?) {
+        localRepository.saveCurrentLevel(level)
+        Log.d(TAG, "💾 Сохранен текущий уровень: $level")
+    }
+
+    override fun getCurrentLevel(): String? {
+        return localRepository.getCurrentLevel()
+    }
+
+    override fun saveLessonsCompleted(count: Int) {
+        localRepository.saveLessonsCompleted(count)
+        Log.d(TAG, "💾 Сохранено количество уроков: $count")
+    }
+
+    override fun getLessonsCompleted(): Int {
+        return localRepository.getLessonsCompleted()
+    }
+
+    override fun saveExercisesCompleted(count: Int) {
+        localRepository.saveExercisesCompleted(count)
+        Log.d(TAG, "💾 Сохранено количество упражнений: $count")
+    }
+
+    override fun getExercisesCompleted(): Int {
+        return localRepository.getExercisesCompleted()
+    }
+
+    override fun saveCorrectAnswers(count: Int) {
+        localRepository.saveCorrectAnswers(count)
+        Log.d(TAG, "💾 Сохранено количество правильных ответов: $count")
+    }
+
+    override fun getCorrectAnswers(): Int {
+        return localRepository.getCorrectAnswers()
+    }
+
+    override fun saveTotalAnswers(count: Int) {
+        localRepository.saveTotalAnswers(count)
+        Log.d(TAG, "💾 Сохранено общее количество ответов: $count")
+    }
+
+    override fun getTotalAnswers(): Int {
+        return localRepository.getTotalAnswers()
+    }
+
+    override fun saveStreakDays(days: Int) {
+        localRepository.saveStreakDays(days)
+        Log.d(TAG, "💾 Сохранено количество дней подряд: $days")
+    }
+
+    override fun getStreakDays(): Int {
+        return localRepository.getStreakDays()
+    }
+
+    override fun clearLanguageLearningData() {
+        localRepository.saveLanguageToLearn(null)
+        localRepository.saveLearningGoal(null)
+        localRepository.saveCurrentLevel(null)
+        localRepository.saveLessonsCompleted(0)
+        localRepository.saveExercisesCompleted(0)
+        localRepository.saveCorrectAnswers(0)
+        localRepository.saveTotalAnswers(0)
+        localRepository.saveStreakDays(0)
+        Log.d(TAG, "🗑️ Данные об изучении языков очищены")
+    }
 }

@@ -78,4 +78,91 @@ interface UniversalAgent {
      * Возвращает сообщения для текущего контекста
      */
     suspend fun getMessages(): List<ChatMessage>
+
+    // ========== Методы для изучения языков ==========
+
+    /**
+     * Сохраняет язык для изучения
+     */
+    fun saveLanguageToLearn(language: String?)
+
+    /**
+     * Возвращает язык для изучения
+     */
+    fun getLanguageToLearn(): String?
+
+    /**
+     * Сохраняет цель обучения
+     */
+    fun saveLearningGoal(goal: String?)
+
+    /**
+     * Возвращает цель обучения
+     */
+    fun getLearningGoal(): String?
+
+    /**
+     * Сохраняет текущий уровень
+     */
+    fun saveCurrentLevel(level: String?)
+
+    /**
+     * Возвращает текущий уровень
+     */
+    fun getCurrentLevel(): String?
+
+    /**
+     * Сохраняет количество пройденных уроков
+     */
+    fun saveLessonsCompleted(count: Int)
+
+    /**
+     * Возвращает количество пройденных уроков
+     */
+    fun getLessonsCompleted(): Int
+
+    /**
+     * Сохраняет количество выполненных упражнений
+     */
+    fun saveExercisesCompleted(count: Int)
+
+    /**
+     * Возвращает количество выполненных упражнений
+     */
+    fun getExercisesCompleted(): Int
+
+    /**
+     * Сохраняет количество правильных ответов
+     */
+    fun saveCorrectAnswers(count: Int)
+
+    /**
+     * Возвращает количество правильных ответов
+     */
+    fun getCorrectAnswers(): Int
+
+    /**
+     * Сохраняет общее количество ответов
+     */
+    fun saveTotalAnswers(count: Int)
+
+    /**
+     * Возвращает общее количество ответов
+     */
+    fun getTotalAnswers(): Int
+
+    /**
+     * Сохраняет количество дней подряд
+     */
+    fun saveStreakDays(days: Int)
+
+    /**
+     * Возвращает количество дней подряд
+     */
+    fun getStreakDays(): Int
+
+    /**
+     * Очищает все данные об изучении языков
+     */
+    fun clearLanguageLearningData()
 }

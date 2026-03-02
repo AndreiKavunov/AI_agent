@@ -53,6 +53,7 @@ class ContextStrategyManager(
             is ContextStrategy.SlidingWindow -> prepareSlidingWindow(messages, strategy)
             is ContextStrategy.StickyFacts -> prepareStickyFacts(messages, strategy)
             is ContextStrategy.Branching -> prepareBranching(messages, strategy)
+            is ContextStrategy.LanguageLearning -> prepareLanguageLearning(messages, strategy)
         }
     }
 
@@ -142,8 +143,7 @@ class ContextStrategyManager(
             val branchMsg = branchMessages[currentBranchId]
 
             if (branchMsg != null) {
-                Log.d(TAG, "Branching: используем ветку '$currentBranchId' с ВСЕМИ ${branchMsg.size} сообщениями (без ограничений)")
-
+                Log.d(TAG, "Branching: используем ветку '$currentBranchId' со ВСЕМИ ${branchMsg.size} сообщениями (без ограничений)")
                 // Убеждаемся, что системное сообщение первое
                 val systemMessage = branchMsg.firstOrNull { it.role == "system" }
                 val nonSystemMessages = branchMsg.filter { it.role != "system" }
@@ -159,6 +159,103 @@ class ContextStrategyManager(
         } else {
             Log.d(TAG, "Branching: ветка не выбрана, используем все сообщения (${messages.size})")
             messages
+        }
+    }
+
+    /**
+     * Стратегия 4: Language Learning
+     * Добавляет информацию об изучении языка в системный промпт
+     */
+    private suspend fun prepareLanguageLearning(
+        messages: List<ChatMessage>,
+        strategy: ContextStrategy.LanguageLearning
+    ): List<ChatMessage> {
+        val systemMessage = messages.firstOrNull { it.role == "system" }
+        val nonSystemMessages = messages.filter { it.role != "system" }
+        val lastMessages = nonSystemMessages.takeLast(strategy.maxMessages)
+
+        // Получаем данные об изучении языка
+        val languageToLearn = localRepository.getLanguageToLearn()
+        val learningGoal = localRepository.getLearningGoal()
+        val currentLevel = localRepository.getCurrentLevel()
+        val lessonsCompleted = localRepository.getLessonsCompleted()
+        val exercisesCompleted = localRepository.getExercisesCompleted()
+        val correctAnswers = localRepository.getCorrectAnswers()
+        val totalAnswers = localRepository.getTotalAnswers()
+
+        // Проверяем, нужно ли спрашивать о языке и цели
+        val needsSetup = languageToLearn == null || learningGoal == null
+
+        // Формируем контекст обучения языка
+        val learningContext = buildString {
+            appendLine("\n=== КОНТЕКСТ ИЗУЧЕНИЯ ЯЗЫКА ===")
+            appendLine("Режим: Обучение иностранному языку")
+
+            if (needsSetup) {
+                // Если язык или цель не заданы, просим пользователя ввести их
+                appendLine("\n⚠️ ВАЖНО: Сначала нужно узнать цели пользователя!")
+                appendLine("Если пользователь только начал изучение языка:")
+                appendLine("1. Поздоровайся и представься как помощник по изучению языков")
+                appendLine("2. Спроси: \"Какой язык вы хотите изучить?\"")
+                appendLine("3. После ответа спроси: \"Какова ваша цель обучения? (например: разговор, перевод, чтение, грамматика, подготовка к экзамену)\"")
+                appendLine("4. После получения обоих ответов, начни обучение")
+                appendLine("5. НЕ начинай давать задания, пока не узнаешь язык и цель!")
+            } else {
+                // Если язык и цель заданы, добавляем данные в контекст
+                appendLine("\n📊 ДАННЫЕ ПОЛЬЗОВАТЕЛЯ:")
+                appendLine("Изучаемый язык: $languageToLearn")
+                appendLine("Цель обучения: $learningGoal")
+                if (currentLevel != null) {
+                    appendLine("Текущий уровень: $currentLevel")
+                }
+                if (lessonsCompleted > 0) {
+                    appendLine("Пройдено уроков: $lessonsCompleted")
+                }
+                if (exercisesCompleted > 0) {
+                    appendLine("Выполнено упражнений: $exercisesCompleted")
+                }
+                if (totalAnswers > 0) {
+                    val accuracy = if (correctAnswers > 0) {
+                        String.format("%.1f%%", (correctAnswers.toDouble() / totalAnswers) * 100)
+                    } else {
+                        "0%"
+                    }
+                    appendLine("Точность ответов: $accuracy ($correctAnswers из $totalAnswers)")
+                }
+
+                appendLine("\n📋 ИНСТРУКЦИИ ДЛЯ АССИСТЕНТА:")
+                appendLine("1. Адаптируй ответы под уровень пользователя")
+                appendLine("2. Исправляй ошибки грамматики и произношения")
+                appendLine("3. Предлагай новые слова и выражения")
+                appendLine("4. Практикуй диалог на изучаемом языке ($languageToLearn)")
+                appendLine("5. Объясняй грамматические правила простым языком")
+                appendLine("6. Отмечай прогресс и достижения")
+                appendLine("7. Используй изучаемый язык ($languageToLearn) в примерах и упражнениях")
+                appendLine("8. Давай практические задания, соответствующие цели: $learningGoal")
+                appendLine("9. Если цель - перевод: давай тексты для перевода и проверяй результат")
+                appendLine("10. Если цель - разговор: практикуй диалоговые ситуации")
+                appendLine("11. Если цель - грамматика: объясняй правила и давай упражнения")
+                appendLine("12. Если цель - чтение: предлагай тексты для чтения и обсуждения")
+            }
+        }
+
+        // Создаем расширенное системное сообщение
+        val enhancedSystemPrompt = buildString {
+            systemMessage?.let { appendLine(it.content) }
+            append(learningContext)
+        }
+
+        val enhancedSystemMessage = ChatMessage(
+            id = systemMessage?.id ?: "system_${System.currentTimeMillis()}",
+            role = "system",
+            content = enhancedSystemPrompt
+        )
+
+        Log.d(TAG, "Language Learning: системное сообщение с контекстом обучения (язык: $languageToLearn, цель: $learningGoal, уровень: $currentLevel, нужно настройку: $needsSetup) + ${lastMessages.size} последних сообщений")
+
+        return buildList {
+            add(enhancedSystemMessage)
+            addAll(lastMessages)
         }
     }
 

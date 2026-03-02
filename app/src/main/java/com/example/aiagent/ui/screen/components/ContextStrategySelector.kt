@@ -90,6 +90,13 @@ fun ContextStrategySelector(
                 onClick = { onStrategySelected(ContextStrategy.Branching()) }
             )
 
+            // Language Learning стратегия
+            StrategyOption(
+                strategy = ContextStrategy.LanguageLearning(),
+                isSelected = currentStrategy is ContextStrategy.LanguageLearning,
+                onClick = { onStrategySelected(ContextStrategy.LanguageLearning()) }
+            )
+
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(

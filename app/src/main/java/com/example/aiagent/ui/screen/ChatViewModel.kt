@@ -42,7 +42,16 @@ class ChatViewModel(
                 facts = universalAgent.getCurrentFacts(),
                 branches = universalAgent.getBranches(),
                 currentBranchId = universalAgent.getCurrentBranchId(),
-                messages = emptyList() // Явно устанавливаем пустой список сообщений для UI
+                messages = emptyList(), // Явно устанавливаем пустой список сообщений для UI
+                // Загружаем данные для изучения языков
+                languageToLearn = universalAgent.getLanguageToLearn(),
+                learningGoal = universalAgent.getLearningGoal(),
+                currentLevel = universalAgent.getCurrentLevel(),
+                lessonsCompleted = universalAgent.getLessonsCompleted(),
+                exercisesCompleted = universalAgent.getExercisesCompleted(),
+                correctAnswers = universalAgent.getCorrectAnswers(),
+                totalAnswers = universalAgent.getTotalAnswers(),
+                streakDays = universalAgent.getStreakDays()
             )
         }
 
@@ -120,6 +129,74 @@ class ChatViewModel(
             is ChatAction.SwitchBranch -> switchBranch(action.branchId)
             is ChatAction.DeleteBranch -> deleteBranch(action.branchId)
             is ChatAction.UpdateSlidingWindowSize -> updateSlidingWindowSize(action.size)
+            
+            // Действия для изучения языков
+            is ChatAction.UpdateLanguageToLearn -> updateLanguageToLearn(action.language)
+            is ChatAction.UpdateLearningGoal -> updateLearningGoal(action.goal)
+            is ChatAction.UpdateCurrentLevel -> updateCurrentLevel(action.level)
+            is ChatAction.IncrementLessonsCompleted -> incrementLessonsCompleted()
+            is ChatAction.IncrementExercisesCompleted -> incrementExercisesCompleted()
+            is ChatAction.AddCorrectAnswer -> addCorrectAnswer(action.memoryId)
+            is ChatAction.AddIncorrectAnswer -> addIncorrectAnswer(action.memoryId)
+        }
+    }
+    
+    // Методы для изучения языков
+    private fun updateLanguageToLearn(language: String) {
+        universalAgent.saveLanguageToLearn(language.ifBlank { null })
+        _state.update { it.copy(languageToLearn = language.ifBlank { null }) }
+    }
+    
+    private fun updateLearningGoal(goal: String) {
+        universalAgent.saveLearningGoal(goal.ifBlank { null })
+        _state.update { it.copy(learningGoal = goal.ifBlank { null }) }
+    }
+    
+    private fun updateCurrentLevel(level: String) {
+        universalAgent.saveCurrentLevel(level.ifBlank { null })
+        _state.update { it.copy(currentLevel = level.ifBlank { null }) }
+    }
+
+    private fun incrementLessonsCompleted() {
+        viewModelScope.launch {
+            val newCount = _state.value.lessonsCompleted + 1
+            universalAgent.saveLessonsCompleted(newCount)
+            _state.update { it.copy(lessonsCompleted = newCount) }
+        }
+    }
+    
+    private fun incrementExercisesCompleted() {
+        viewModelScope.launch {
+            val newCount = _state.value.exercisesCompleted + 1
+            universalAgent.saveExercisesCompleted(newCount)
+            _state.update { it.copy(exercisesCompleted = newCount) }
+        }
+    }
+    
+    private fun addCorrectAnswer(memoryId: String) {
+        viewModelScope.launch {
+            val newCorrect = _state.value.correctAnswers + 1
+            val newTotal = _state.value.totalAnswers + 1
+            universalAgent.saveCorrectAnswers(newCorrect)
+            universalAgent.saveTotalAnswers(newTotal)
+            _state.update { 
+                it.copy(
+                    correctAnswers = newCorrect,
+                    totalAnswers = newTotal
+                )
+            }
+        }
+    }
+    
+    private fun addIncorrectAnswer(memoryId: String) {
+        viewModelScope.launch {
+            val newTotal = _state.value.totalAnswers + 1
+            universalAgent.saveTotalAnswers(newTotal)
+            _state.update { 
+                it.copy(
+                    totalAnswers = newTotal
+                )
+            }
         }
     }
 
@@ -141,6 +218,7 @@ class ChatViewModel(
     private fun newChat() {
         viewModelScope.launch {
             universalAgent.clearHistory() // Очищает историю в БД
+            universalAgent.clearLanguageLearningData() // Очищаем данные об изучении языков
             _state.update {
                 it.copy(
                     messages = emptyList(), // Очищаем UI сообщения
@@ -151,7 +229,16 @@ class ChatViewModel(
                     showContextSettings = false,
                     facts = emptyMap(),
                     branches = emptyList(),
-                    currentBranchId = null
+                    currentBranchId = null,
+                    // Очищаем данные об изучении языков в UI
+                    languageToLearn = null,
+                    learningGoal = null,
+                    currentLevel = null,
+                    lessonsCompleted = 0,
+                    exercisesCompleted = 0,
+                    correctAnswers = 0,
+                    totalAnswers = 0,
+                    streakDays = 0
                 )
             }
         }
@@ -222,8 +309,7 @@ class ChatViewModel(
             }
             // Обновляем факты и ветки после смены стратегии
             updateFactsAndBranches()
-            // Перезагружаем сообщения (для Branching может измениться набор)
-            loadMessages()
+            // НЕ перезагружаем сообщения для UI - показываем только сообщения текущей сессии
         }
     }
 
@@ -263,7 +349,7 @@ class ChatViewModel(
             if (success) {
                 // Обновляем список веток и переключаемся на новую ветку
                 updateFactsAndBranches()
-                loadMessages()
+                // НЕ загружаем сообщения для UI - показываем только сообщения текущей сессии
             }
         }
     }
@@ -271,8 +357,7 @@ class ChatViewModel(
     private fun switchBranch(branchId: String) {
         viewModelScope.launch {
             universalAgent.switchBranch(branchId)
-            // Загружаем сообщения выбранной ветки
-            loadMessages()
+            // НЕ загружаем сообщения для UI - показываем только сообщения текущей сессии
             updateFactsAndBranches()
         }
     }
@@ -281,7 +366,7 @@ class ChatViewModel(
         viewModelScope.launch {
             universalAgent.deleteBranch(branchId)
             updateFactsAndBranches()
-            loadMessages()
+            // НЕ загружаем сообщения для UI - показываем только сообщения текущей сессии
         }
     }
 
@@ -323,15 +408,18 @@ class ChatViewModel(
                 refreshTokenStats()
                 updateFactsAndBranches()
 
-                // Перезагружаем сообщения, но фильтруем системные
-                val allMessages = universalAgent.getMessages()
-                val uiMessages = allMessages.mapNotNull { chatMessage ->
-                    convertToUIMessage(chatMessage)
-                }
+                // Создаем сообщение ассистента для UI (только текущий ответ)
+                val assistantMessage = Message.AgentMessage(
+                    id = System.currentTimeMillis().toString(),
+                    content = response.text,
+                    tokenCount = response.tokenCount,
+                    promptTokens = response.promptTokens,
+                    responseTimeMs = response.responseTimeMs
+                )
 
                 _state.update { currentState ->
                     currentState.copy(
-                        messages = uiMessages, // Обновляем сразу все сообщения
+                        messages = currentState.messages + assistantMessage, // Добавляем только новый ответ
                         isLoading = false,
                         lastResponse = LastResponseInfo(
                             timeMs = response.responseTimeMs,

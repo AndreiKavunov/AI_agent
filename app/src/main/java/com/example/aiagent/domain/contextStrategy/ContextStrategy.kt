@@ -30,6 +30,14 @@ sealed interface ContextStrategy {
         override val name = "Branching"
         override val description = "Позволяет создавать и переключаться между ветками диалога"
     }
+
+    /** Стратегия 4: Изучение языков */
+    data class LanguageLearning(
+        val maxMessages: Int = 10
+    ) : ContextStrategy {
+        override val name = "Language Learning"
+        override val description = "Специальный режим для изучения языков с отслеживанием прогресса"
+    }
 }
 
 data class DialogFact(

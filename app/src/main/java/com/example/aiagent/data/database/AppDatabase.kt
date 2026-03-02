@@ -9,15 +9,19 @@ import android.content.Context
 @Database(
     entities = [
         MessageEntity::class,
-        SummaryEntity::class
+        SummaryEntity::class,
+        com.example.aiagent.data.database.memory.ShortTermMemoryEntity::class,
+        com.example.aiagent.data.database.memory.WorkingMemoryEntity::class,
+        com.example.aiagent.data.database.memory.LongTermMemoryEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun messageDao(): MessageDao
     abstract fun summaryDao(): SummaryDao
+    abstract fun memoryDao(): com.example.aiagent.data.database.memory.MemoryDao
 
     companion object {
         @Volatile

@@ -85,5 +85,16 @@ data class ChatState(
     val slidingWindowSize: Int = 10,
     val showBranchDialog: Boolean = false,
     val selectedMessageForBranch: String? = null,
-    val branchNameInput: String = ""
+    val branchNameInput: String = "",
+    
+    // Поля для изучения языков
+    val languageToLearn: String? = null,
+    val learningGoal: String? = null,
+    val currentLevel: String? = null,
+    val lessonsCompleted: Int = 0,
+    val exercisesCompleted: Int = 0,
+    val correctAnswers: Int = 0,
+    val totalAnswers: Int = 0,
+    val achievements: List<String> = emptyList(),
+    val streakDays: Int = 0
 )

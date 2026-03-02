@@ -143,6 +143,72 @@ class MessageLocalRepository private constructor(
     // Переименовываем метод, чтобы избежать конфликта
     fun provideSessionId(): String = getCurrentSessionIdInternal()
 
+    // ========== Изучение языков ==========
+
+    fun saveLanguageToLearn(language: String?) {
+        prefs.edit().putString("language_to_learn", language).apply()
+    }
+
+    fun getLanguageToLearn(): String? {
+        return prefs.getString("language_to_learn", null)
+    }
+
+    fun saveLearningGoal(goal: String?) {
+        prefs.edit().putString("learning_goal", goal).apply()
+    }
+
+    fun getLearningGoal(): String? {
+        return prefs.getString("learning_goal", null)
+    }
+
+    fun saveCurrentLevel(level: String?) {
+        prefs.edit().putString("current_level", level).apply()
+    }
+
+    fun getCurrentLevel(): String? {
+        return prefs.getString("current_level", null)
+    }
+
+    fun saveLessonsCompleted(count: Int) {
+        prefs.edit().putInt("lessons_completed", count).apply()
+    }
+
+    fun getLessonsCompleted(): Int {
+        return prefs.getInt("lessons_completed", 0)
+    }
+
+    fun saveExercisesCompleted(count: Int) {
+        prefs.edit().putInt("exercises_completed", count).apply()
+    }
+
+    fun getExercisesCompleted(): Int {
+        return prefs.getInt("exercises_completed", 0)
+    }
+
+    fun saveCorrectAnswers(count: Int) {
+        prefs.edit().putInt("correct_answers", count).apply()
+    }
+
+    fun getCorrectAnswers(): Int {
+        return prefs.getInt("correct_answers", 0)
+    }
+
+    fun saveTotalAnswers(count: Int) {
+        prefs.edit().putInt("total_answers", count).apply()
+    }
+
+    fun getTotalAnswers(): Int {
+        return prefs.getInt("total_answers", 0)
+    }
+
+    fun saveStreakDays(days: Int) {
+        prefs.edit().putInt("streak_days", days).apply()
+    }
+
+    fun getStreakDays(): Int {
+        return prefs.getInt("streak_days", 0)
+    }
+
     companion object {
         @Volatile
         private var INSTANCE: MessageLocalRepository? = null
