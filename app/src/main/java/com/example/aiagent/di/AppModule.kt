@@ -15,6 +15,8 @@ import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
 import com.example.aiagent.domain.RepositoryType
 import com.example.aiagent.domain.agent.UniversalAgent
 import com.example.aiagent.domain.agent.UniversalAgentImpl
+import com.example.aiagent.domain.agent.memory.LanguageFactExtractor
+import com.example.aiagent.domain.agent.memory.LanguageMemoryManager
 import com.example.aiagent.domain.contextStrategy.ContextStrategyManager
 import com.example.aiagent.domain.contextStrategy.FactExtractor
 import com.example.aiagent.ui.screen.ChatViewModel
@@ -68,6 +70,22 @@ object AppModule {
         )
     }
 
+    // Экстрактор языковых фактов
+    private val languageFactExtractor: LanguageFactExtractor by lazy {
+        LanguageFactExtractor(
+            gigaChatRepository = gigaChatRepository,
+            huggingFaceRepository = huggingFaceRepository
+        )
+    }
+
+    // Менеджер языковой памяти
+    private val languageMemoryManager: LanguageMemoryManager by lazy {
+        LanguageMemoryManager(
+            memoryRepository = memoryRepository,
+            factExtractor = languageFactExtractor
+        )
+    }
+
     // Менеджер стратегий контекста
     private val contextStrategyManager: ContextStrategyManager by lazy {
         ContextStrategyManager(
@@ -83,7 +101,8 @@ object AppModule {
             huggingFaceRepository = huggingFaceRepository,
             localRepository = messageLocalRepository,
             summaryDao = summaryDao,
-            contextStrategyManager = contextStrategyManager
+            contextStrategyManager = contextStrategyManager,
+            languageMemoryManager = languageMemoryManager
         )
     }
 

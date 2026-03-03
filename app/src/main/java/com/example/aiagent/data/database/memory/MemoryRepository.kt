@@ -35,6 +35,10 @@ class MemoryRepository(
         memoryDao.updateShortTermMemoryCurrentTopic(sessionId, topic)
     }
     
+    suspend fun updateConversationContext(sessionId: String, context: String) {
+        memoryDao.updateConversationContext(sessionId, context)
+    }
+    
     suspend fun clearShortTermMemory(sessionId: String) {
         memoryDao.deleteShortTermMemory(sessionId)
     }
@@ -88,6 +92,26 @@ class MemoryRepository(
     
     suspend fun updateCurrentLessonId(id: String, lessonId: String?) {
         memoryDao.updateCurrentLessonId(id, lessonId)
+    }
+    
+    suspend fun updateCurrentLevel(id: String, level: String?) {
+        memoryDao.updateCurrentLevel(id, level)
+    }
+    
+    suspend fun updateLanguageToLearn(id: String, language: String?) {
+        memoryDao.updateLanguageToLearn(id, language)
+    }
+    
+    suspend fun updateLearningGoal(id: String, goal: String?) {
+        memoryDao.updateLearningGoal(id, goal)
+    }
+    
+    suspend fun updateLastPracticeDate(id: String, date: Long = System.currentTimeMillis()) {
+        memoryDao.updateLastPracticeDate(id, date)
+    }
+    
+    suspend fun updateStreakDays(id: String, days: Int) {
+        memoryDao.updateStreakDays(id, days)
     }
     
     suspend fun clearWorkingMemory(sessionId: String) {

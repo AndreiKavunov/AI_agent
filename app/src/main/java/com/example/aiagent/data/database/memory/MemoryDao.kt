@@ -28,6 +28,9 @@ interface MemoryDao {
     @Query("UPDATE short_term_memory SET currentTopic = :topic WHERE sessionId = :sessionId")
     suspend fun updateShortTermMemoryCurrentTopic(sessionId: String, topic: String?)
     
+    @Query("UPDATE short_term_memory SET conversationContext = :context WHERE sessionId = :sessionId")
+    suspend fun updateConversationContext(sessionId: String, context: String)
+    
     @Query("DELETE FROM short_term_memory WHERE sessionId = :sessionId")
     suspend fun deleteShortTermMemory(sessionId: String)
     
@@ -59,6 +62,21 @@ interface MemoryDao {
     
     @Query("UPDATE working_memory SET currentLessonId = :lessonId WHERE id = :id")
     suspend fun updateCurrentLessonId(id: String, lessonId: String?)
+    
+    @Query("UPDATE working_memory SET currentLevel = :level WHERE id = :id")
+    suspend fun updateCurrentLevel(id: String, level: String?)
+    
+    @Query("UPDATE working_memory SET languageToLearn = :language WHERE id = :id")
+    suspend fun updateLanguageToLearn(id: String, language: String?)
+    
+    @Query("UPDATE working_memory SET learningGoal = :goal WHERE id = :id")
+    suspend fun updateLearningGoal(id: String, goal: String?)
+    
+    @Query("UPDATE working_memory SET lastPracticeDate = :date WHERE id = :id")
+    suspend fun updateLastPracticeDate(id: String, date: Long)
+    
+    @Query("UPDATE working_memory SET streakDays = :days WHERE id = :id")
+    suspend fun updateStreakDays(id: String, days: Int)
     
     @Query("DELETE FROM working_memory WHERE sessionId = :sessionId")
     suspend fun deleteWorkingMemory(sessionId: String)

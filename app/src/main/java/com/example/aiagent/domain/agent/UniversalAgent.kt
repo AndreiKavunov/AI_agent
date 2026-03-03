@@ -5,6 +5,8 @@ import com.example.aiagent.data.huggingFace.ChatMessage
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.response.AgentResponse
 import com.example.aiagent.domain.RepositoryType
+import com.example.aiagent.domain.agent.memory.LearningStats
+import com.example.aiagent.domain.agent.memory.UserProfile
 import com.example.aiagent.domain.contextStrategy.ContextStrategy
 import com.example.aiagent.domain.contextStrategy.DialogBranch
 import com.example.aiagent.domain.contextStrategy.DialogFact
@@ -165,4 +167,36 @@ interface UniversalAgent {
      * Очищает все данные об изучении языков
      */
     fun clearLanguageLearningData()
+
+    // ========== Методы для работы с LanguageMemoryManager ==========
+
+    /**
+     * Получает профиль пользователя из долговременной памяти
+     */
+    suspend fun getUserProfile(): UserProfile?
+
+    /**
+     * Сохраняет профиль пользователя в долговременную память
+     */
+    suspend fun saveUserProfile(profile: UserProfile)
+
+    /**
+     * Получает статистику обучения
+     */
+    suspend fun getLearningStats(): LearningStats?
+
+    /**
+     * Строит промпт с контекстом из всех уровней памяти
+     */
+    suspend fun buildMemoryPrompt(basePrompt: String): String
+
+    /**
+     * Очищает краткосрочную память
+     */
+    suspend fun clearShortTermMemory()
+
+    /**
+     * Очищает рабочую память
+     */
+    suspend fun clearWorkingMemory()
 }

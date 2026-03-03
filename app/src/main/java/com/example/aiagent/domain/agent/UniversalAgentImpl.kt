@@ -12,6 +12,9 @@ import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.response.AgentResponse
 import com.example.aiagent.domain.RepositoryType
 import com.example.aiagent.domain.agent.summary.SummaryManager
+import com.example.aiagent.domain.agent.memory.LanguageMemoryManager
+import com.example.aiagent.domain.agent.memory.UserProfile
+import com.example.aiagent.domain.agent.memory.LearningStats
 import com.example.aiagent.domain.contextStrategy.ContextStrategy
 import com.example.aiagent.domain.contextStrategy.ContextStrategyManager
 import com.example.aiagent.domain.contextStrategy.DialogFact
@@ -29,7 +32,8 @@ class UniversalAgentImpl(
     private val huggingFaceRepository: HuggingFaceRepositoryImpl,
     private val localRepository: MessageLocalRepository,
     private val summaryDao: SummaryDao,
-    private val contextStrategyManager: ContextStrategyManager
+    private val contextStrategyManager: ContextStrategyManager,
+    private val languageMemoryManager: LanguageMemoryManager
 ) : UniversalAgent {
 
     private var currentType = RepositoryType.GIGACHAT
@@ -90,6 +94,23 @@ class UniversalAgentImpl(
             modelName = currentHuggingFaceModel?.displayName
         )
         Log.d(TAG, "💾 Сообщение пользователя сохранено в БД: $userMessageId")
+
+        // Обрабатываем сообщение через LanguageMemoryManager
+        withContext(Dispatchers.IO) {
+            launch(Dispatchers.IO) {
+            try {
+                val sessionId = localRepository.provideSessionId()
+                languageMemoryManager.processMessage(
+                    sessionId = sessionId,
+                    message = userChatMessage,
+                    repositoryType = currentType,
+                    modelName = currentHuggingFaceModel?.displayName
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Ошибка при обработке сообщения в LanguageMemoryManager: ${e.message}")
+            }
+            }
+        }
 
         // Добавляем сообщение в текущую ветку, если используется ветвление
         if (contextStrategyManager.getCurrentStrategy() is ContextStrategy.Branching) {
@@ -167,6 +188,21 @@ class UniversalAgentImpl(
                     realTokenCount = response.tokenCount
                 )
                 Log.d(TAG, "💾 Ответ ассистента сохранен в БД: $assistantMessageId")
+
+                // Обрабатываем ответ ассистента через LanguageMemoryManager
+                launch(Dispatchers.IO) {
+                    try {
+                        val sessionId = localRepository.provideSessionId()
+                        languageMemoryManager.processMessage(
+                            sessionId = sessionId,
+                            message = assistantChatMessage,
+                            repositoryType = currentType,
+                            modelName = currentHuggingFaceModel?.displayName
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "❌ Ошибка при обработке ответа в LanguageMemoryManager: ${e.message}")
+                    }
+                }
 
                 // Добавляем ответ в текущую ветку, если используется ветвление
                 if (contextStrategyManager.getCurrentStrategy() is ContextStrategy.Branching) {
@@ -463,5 +499,36 @@ class UniversalAgentImpl(
         localRepository.saveTotalAnswers(0)
         localRepository.saveStreakDays(0)
         Log.d(TAG, "🗑️ Данные об изучении языков очищены")
+    }
+
+    // ========== Методы для работы с LanguageMemoryManager ==========
+
+    override suspend fun getUserProfile(): UserProfile? {
+        return languageMemoryManager.getUserProfile()
+    }
+
+    override suspend fun saveUserProfile(profile: UserProfile) {
+        languageMemoryManager.saveUserProfile(profile)
+        Log.d(TAG, "💾 Профиль пользователя сохранен")
+    }
+
+    override suspend fun getLearningStats(): LearningStats? {
+        val sessionId = localRepository.provideSessionId()
+        return languageMemoryManager.getLearningStats(sessionId)
+    }
+
+    override suspend fun buildMemoryPrompt(basePrompt: String): String {
+        val sessionId = localRepository.provideSessionId()
+        return languageMemoryManager.buildPrompt(sessionId, basePrompt)
+    }
+
+    override suspend fun clearShortTermMemory() {
+        val sessionId = localRepository.provideSessionId()
+        languageMemoryManager.clearShortTermMemory(sessionId)
+    }
+
+    override suspend fun clearWorkingMemory() {
+        val sessionId = localRepository.provideSessionId()
+        languageMemoryManager.clearWorkingMemory(sessionId)
     }
 }
