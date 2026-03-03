@@ -2,6 +2,7 @@ package com.example.aiagent.ui.screen
 
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.domain.RepositoryType
+import com.example.aiagent.domain.agent.UserSettings
 import com.example.aiagent.domain.contextStrategy.ContextStrategy
 
 sealed interface ChatAction {
@@ -23,7 +24,7 @@ sealed interface ChatAction {
     data class SwitchBranch(val branchId: String) : ChatAction
     data class DeleteBranch(val branchId: String) : ChatAction
     data class UpdateSlidingWindowSize(val size: Int) : ChatAction
-    
+
     // Действия для изучения языков
     data class UpdateLanguageToLearn(val language: String) : ChatAction
     data class UpdateLearningGoal(val goal: String) : ChatAction
@@ -32,4 +33,9 @@ sealed interface ChatAction {
     object IncrementExercisesCompleted : ChatAction
     data class AddCorrectAnswer(val memoryId: String) : ChatAction
     data class AddIncorrectAnswer(val memoryId: String) : ChatAction
+
+    // Действия для настроек пользователя
+    object ShowProfileDialog : ChatAction
+    object HideProfileDialog : ChatAction
+    data class UpdateUserSettings(val settings: UserSettings) : ChatAction
 }

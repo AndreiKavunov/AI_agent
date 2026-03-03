@@ -3,6 +3,7 @@ package com.example.aiagent.ui.screen
 
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.domain.RepositoryType
+import com.example.aiagent.domain.agent.UserSettings
 import com.example.aiagent.domain.contextStrategy.ContextStrategy
 import com.example.aiagent.domain.contextStrategy.DialogBranch
 import com.example.aiagent.domain.contextStrategy.DialogFact
@@ -86,7 +87,7 @@ data class ChatState(
     val showBranchDialog: Boolean = false,
     val selectedMessageForBranch: String? = null,
     val branchNameInput: String = "",
-    
+
     // Поля для изучения языков
     val languageToLearn: String? = null,
     val learningGoal: String? = null,
@@ -96,5 +97,9 @@ data class ChatState(
     val correctAnswers: Int = 0,
     val totalAnswers: Int = 0,
     val achievements: List<String> = emptyList(),
-    val streakDays: Int = 0
+    val streakDays: Int = 0,
+
+    // Поля для настроек пользователя
+    val userSettings: UserSettings = UserSettings.createDefault(),
+    val showProfileDialog: Boolean = false
 )

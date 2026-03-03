@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.outlined.Info
@@ -34,6 +35,7 @@ fun ChatTopBar(
     onToggleTemperature: () -> Unit,
     onToggleContextSettings: () -> Unit,
     onShowTokenDetails: () -> Unit,
+    onToggleProfile: () -> Unit,
     showTemperature: Boolean,
     showContextSettings: Boolean
 ) {
@@ -64,6 +66,19 @@ fun ChatTopBar(
                     badgeCount = state.tokenStats.totalTokens,
                     icon = Icons.Outlined.Info,
                     contentDescription = "Информация о токенах"
+                )
+            }
+
+            // Кнопка профиля пользователя
+            IconButton(onClick = onToggleProfile) {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = "Профиль пользователя",
+                    tint = if (state.showProfileDialog) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 )
             }
 

@@ -124,8 +124,21 @@ class UniversalAgentImpl(
                 val allMessages = localRepository.getMessageHistory()
                 Log.d(TAG, "📚 Загружено ${allMessages.size} сообщений из БД")
 
+                // Получаем системный промпт с настройками пользователя
+                val systemPromptWithSettings = getSystemPromptWithSettings()
+
+                // Временно обновляем системный промпт в БД для текущего запроса
+                val currentSystemPrompt = localRepository.getSystemPrompt()
+                localRepository.setSystemPrompt(systemPromptWithSettings)
+
+                // Перезагружаем сообщения с обновленным системным промптом
+                val messagesWithUpdatedPrompt = localRepository.getMessageHistory()
+
+                // Восстанавливаем базовый системный промпт
+                localRepository.setSystemPrompt(currentSystemPrompt ?: "Ты полезный ассистент. Отвечай кратко и по делу на русском языке.")
+
                 // Применяем текущую стратегию контекста для подготовки сообщений к API
-                val messagesForApi = contextStrategyManager.prepareMessagesForApi(allMessages)
+                val messagesForApi = contextStrategyManager.prepareMessagesForApi(messagesWithUpdatedPrompt)
                 Log.d(TAG, "🎯 Применена стратегия: ${contextStrategyManager.getCurrentStrategy().name}")
                 Log.d(TAG, "📤 Подготовлено ${messagesForApi.size} сообщений для API")
 
@@ -342,6 +355,65 @@ class UniversalAgentImpl(
     }
 
     override suspend fun getSystemPrompt(): String? = localRepository.getSystemPrompt()
+
+    // ========== Методы для работы с настройками пользователя ==========
+
+    /**
+     * Получает настройки пользователя
+     */
+    suspend fun getUserSettings(): UserSettings? {
+        val style = localRepository.getUserSettingsStyle()
+        val format = localRepository.getUserSettingsFormat()
+        val constraints = localRepository.getUserSettingsConstraints()
+
+        return if (style != null || format != null || constraints != null) {
+            UserSettings(
+                style = style ?: "",
+                responseFormat = format ?: "",
+                constraints = constraints ?: ""
+            )
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Сохраняет настройки пользователя
+     */
+    suspend fun saveUserSettings(settings: UserSettings) {
+        localRepository.saveUserSettingsStyle(settings.style)
+        localRepository.saveUserSettingsFormat(settings.responseFormat)
+        localRepository.saveUserSettingsConstraints(settings.constraints)
+        Log.d(TAG, "💾 Настройки пользователя сохранены: стиль=${settings.style}, формат=${settings.responseFormat}, ограничения=${settings.constraints}")
+    }
+
+    /**
+     * Получает базовый системный промпт без настроек пользователя
+     */
+    private suspend fun getBaseSystemPrompt(): String {
+        val currentPrompt = localRepository.getSystemPrompt() ?: "Ты полезный ассистент. Отвечай кратко и по делу на русском языке."
+        // Удаляем старые настройки из промпта, если они есть
+        val settingsMarker = "\n=== ПЕРСОНАЛИЗАЦИЯ ОТВЕТОВ ==="
+        return if (currentPrompt.contains(settingsMarker)) {
+            currentPrompt.substringBefore(settingsMarker)
+        } else {
+            currentPrompt
+        }
+    }
+
+    /**
+     * Получает системный промпт с добавленными настройками пользователя
+     */
+    private suspend fun getSystemPromptWithSettings(): String {
+        val basePrompt = getBaseSystemPrompt()
+        val settings = getUserSettings()
+
+        return if (settings != null && settings.isFilled()) {
+            basePrompt + settings.toSystemPromptString()
+        } else {
+            basePrompt
+        }
+    }
 
     override fun getCurrentAgentInfo(): String = currentType.name
 

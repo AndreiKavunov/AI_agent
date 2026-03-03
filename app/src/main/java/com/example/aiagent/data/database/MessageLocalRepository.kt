@@ -209,6 +209,32 @@ class MessageLocalRepository private constructor(
         return prefs.getInt("streak_days", 0)
     }
 
+    // ========== Настройки пользователя ==========
+
+    fun saveUserSettingsStyle(style: String) {
+        prefs.edit().putString("user_settings_style", style).apply()
+    }
+
+    fun getUserSettingsStyle(): String? {
+        return prefs.getString("user_settings_style", null)
+    }
+
+    fun saveUserSettingsFormat(format: String) {
+        prefs.edit().putString("user_settings_format", format).apply()
+    }
+
+    fun getUserSettingsFormat(): String? {
+        return prefs.getString("user_settings_format", null)
+    }
+
+    fun saveUserSettingsConstraints(constraints: String) {
+        prefs.edit().putString("user_settings_constraints", constraints).apply()
+    }
+
+    fun getUserSettingsConstraints(): String? {
+        return prefs.getString("user_settings_constraints", null)
+    }
+
     companion object {
         @Volatile
         private var INSTANCE: MessageLocalRepository? = null

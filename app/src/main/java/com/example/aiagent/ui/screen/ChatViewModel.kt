@@ -7,6 +7,7 @@ import com.example.aiagent.data.huggingFace.ChatMessage
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.domain.RepositoryType
 import com.example.aiagent.domain.agent.UniversalAgent
+import com.example.aiagent.domain.agent.UserSettings
 import com.example.aiagent.domain.contextStrategy.ContextStrategy
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,7 +52,9 @@ class ChatViewModel(
                 exercisesCompleted = universalAgent.getExercisesCompleted(),
                 correctAnswers = universalAgent.getCorrectAnswers(),
                 totalAnswers = universalAgent.getTotalAnswers(),
-                streakDays = universalAgent.getStreakDays()
+                streakDays = universalAgent.getStreakDays(),
+                // Загружаем настройки пользователя
+                userSettings = (universalAgent as? com.example.aiagent.domain.agent.UniversalAgentImpl)?.getUserSettings() ?: UserSettings.createDefault()
             )
         }
 
@@ -129,7 +132,7 @@ class ChatViewModel(
             is ChatAction.SwitchBranch -> switchBranch(action.branchId)
             is ChatAction.DeleteBranch -> deleteBranch(action.branchId)
             is ChatAction.UpdateSlidingWindowSize -> updateSlidingWindowSize(action.size)
-            
+
             // Действия для изучения языков
             is ChatAction.UpdateLanguageToLearn -> updateLanguageToLearn(action.language)
             is ChatAction.UpdateLearningGoal -> updateLearningGoal(action.goal)
@@ -138,6 +141,11 @@ class ChatViewModel(
             is ChatAction.IncrementExercisesCompleted -> incrementExercisesCompleted()
             is ChatAction.AddCorrectAnswer -> addCorrectAnswer(action.memoryId)
             is ChatAction.AddIncorrectAnswer -> addIncorrectAnswer(action.memoryId)
+
+            // Действия для настроек пользователя
+            is ChatAction.ShowProfileDialog -> showProfileDialog()
+            is ChatAction.HideProfileDialog -> hideProfileDialog()
+            is ChatAction.UpdateUserSettings -> updateUserSettings(action.settings)
         }
     }
     
@@ -192,9 +200,30 @@ class ChatViewModel(
         viewModelScope.launch {
             val newTotal = _state.value.totalAnswers + 1
             universalAgent.saveTotalAnswers(newTotal)
-            _state.update { 
+            _state.update {
                 it.copy(
                     totalAnswers = newTotal
+                )
+            }
+        }
+    }
+
+    // Методы для настроек пользователя
+    private fun showProfileDialog() {
+        _state.update { it.copy(showProfileDialog = true) }
+    }
+
+    private fun hideProfileDialog() {
+        _state.update { it.copy(showProfileDialog = false) }
+    }
+
+    private fun updateUserSettings(settings: UserSettings) {
+        viewModelScope.launch {
+            (universalAgent as? com.example.aiagent.domain.agent.UniversalAgentImpl)?.saveUserSettings(settings)
+            _state.update {
+                it.copy(
+                    userSettings = settings,
+                    showProfileDialog = false
                 )
             }
         }

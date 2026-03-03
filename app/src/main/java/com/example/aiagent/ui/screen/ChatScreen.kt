@@ -51,6 +51,7 @@ fun ChatScreen(
                 onToggleTemperature = { showTemperature = !showTemperature },
                 onToggleContextSettings = { showContextSettings = !showContextSettings },
                 onShowTokenDetails = { viewModel.handleAction(ChatAction.ShowTokenDetails) },
+                onToggleProfile = { viewModel.handleAction(ChatAction.ShowProfileDialog) },
                 showTemperature = showTemperature,
                 showContextSettings = showContextSettings
             )
@@ -250,6 +251,17 @@ fun ChatScreen(
             onDismiss = {
                 selectedMessageForBranch = null
                 branchNameInput = ""
+            }
+        )
+    }
+
+    // Диалог настроек пользователя
+    if (state.showProfileDialog) {
+        UserProfileDialog(
+            profile = state.userSettings,
+            onDismiss = { viewModel.handleAction(ChatAction.HideProfileDialog) },
+            onSave = { settings ->
+                viewModel.handleAction(ChatAction.UpdateUserSettings(settings))
             }
         )
     }
