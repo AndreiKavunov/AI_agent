@@ -141,6 +141,9 @@ class UniversalAgentImpl(
                     systemPromptWithSettings
                 }
 
+                // Логируем финальный системный промпт
+                Log.d(TAG, "📝 ФИНАЛЬНЫЙ СИСТЕМНЫЙ ПРОМПТ:\n$finalSystemPrompt")
+
                 // Временно обновляем системный промпт в БД для текущего запроса
                 val currentSystemPrompt = localRepository.getSystemPrompt()
                 localRepository.setSystemPrompt(finalSystemPrompt)
