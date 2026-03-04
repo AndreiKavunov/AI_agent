@@ -7,6 +7,7 @@ import com.example.aiagent.domain.agent.UserSettings
 import com.example.aiagent.domain.contextStrategy.ContextStrategy
 import com.example.aiagent.domain.contextStrategy.DialogBranch
 import com.example.aiagent.domain.contextStrategy.DialogFact
+import com.example.aiagent.domain.workflow.WorkflowState
 
 sealed interface Message {
     val id: String
@@ -76,6 +77,9 @@ data class ChatState(
     val lastResponse: LastResponseInfo? = null,
     val tokenStats: TokenStats = TokenStats(),
     val showTokenDetails: Boolean = false,
+
+    // Поля для workflow (рабочего процесса)
+    val workflowState: WorkflowState = WorkflowState(),
 
     // Новые поля для стратегий контекста
     val currentContextStrategy: ContextStrategy = ContextStrategy.SlidingWindow(),

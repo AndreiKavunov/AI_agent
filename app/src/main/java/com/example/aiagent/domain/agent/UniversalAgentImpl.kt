@@ -19,6 +19,7 @@ import com.example.aiagent.domain.contextStrategy.ContextStrategy
 import com.example.aiagent.domain.contextStrategy.ContextStrategyManager
 import com.example.aiagent.domain.contextStrategy.DialogFact
 import com.example.aiagent.domain.contextStrategy.DialogBranch
+import com.example.aiagent.domain.workflow.WorkflowManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -40,6 +41,7 @@ class UniversalAgentImpl(
     private var currentHuggingFaceModel: HuggingFaceModel? = null
     private val tokenCounter = TokenCounter()
     private var currentTemperature: Double = 0.7
+    private val workflowManager = WorkflowManager()
 
     // Инициализируем SummaryManager
     private val summaryManager by lazy {
@@ -127,9 +129,21 @@ class UniversalAgentImpl(
                 // Получаем системный промпт с настройками пользователя
                 val systemPromptWithSettings = getSystemPromptWithSettings()
 
+                // Добавляем контекст workflow, если он активен
+                val finalSystemPrompt = if (workflowManager.isWorkflowActive()) {
+                    val workflowPrompt = workflowManager.getSystemPromptForCurrentStage()
+                    if (workflowPrompt != null) {
+                        systemPromptWithSettings + "\n\n" + workflowPrompt
+                    } else {
+                        systemPromptWithSettings
+                    }
+                } else {
+                    systemPromptWithSettings
+                }
+
                 // Временно обновляем системный промпт в БД для текущего запроса
                 val currentSystemPrompt = localRepository.getSystemPrompt()
-                localRepository.setSystemPrompt(systemPromptWithSettings)
+                localRepository.setSystemPrompt(finalSystemPrompt)
 
                 // Перезагружаем сообщения с обновленным системным промптом
                 val messagesWithUpdatedPrompt = localRepository.getMessageHistory()
@@ -603,4 +617,12 @@ class UniversalAgentImpl(
         val sessionId = localRepository.provideSessionId()
         languageMemoryManager.clearWorkingMemory(sessionId)
     }
+
+    // ========== Методы для работы с workflow (рабочим процессом) ==========
+
+    fun getWorkflowManager(): WorkflowManager = workflowManager
+
+    fun isWorkflowActive(): Boolean = workflowManager.isWorkflowActive()
+
+    fun getCurrentWorkflowStage(): String? = workflowManager.getCurrentStage()?.displayName
 }

@@ -97,6 +97,13 @@ fun ContextStrategySelector(
                 onClick = { onStrategySelected(ContextStrategy.LanguageLearning()) }
             )
 
+            // Workflow стратегия
+            StrategyOption(
+                strategy = ContextStrategy.Workflow(),
+                isSelected = currentStrategy is ContextStrategy.Workflow,
+                onClick = { onStrategySelected(ContextStrategy.Workflow()) }
+            )
+
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(

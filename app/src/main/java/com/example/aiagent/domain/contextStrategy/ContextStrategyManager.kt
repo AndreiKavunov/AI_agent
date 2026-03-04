@@ -54,6 +54,7 @@ class ContextStrategyManager(
             is ContextStrategy.StickyFacts -> prepareStickyFacts(messages, strategy)
             is ContextStrategy.Branching -> prepareBranching(messages, strategy)
             is ContextStrategy.LanguageLearning -> prepareLanguageLearning(messages, strategy)
+            is ContextStrategy.Workflow -> prepareWorkflow(messages, strategy)
         }
     }
 
@@ -255,6 +256,25 @@ class ContextStrategyManager(
 
         return buildList {
             add(enhancedSystemMessage)
+            addAll(lastMessages)
+        }
+    }
+
+    /**
+     * Стратегия 5: Workflow (пошаговый режим)
+     */
+    private suspend fun prepareWorkflow(
+        messages: List<ChatMessage>,
+        strategy: ContextStrategy.Workflow
+    ): List<ChatMessage> {
+        val systemMessage = messages.firstOrNull { it.role == "system" }
+        val nonSystemMessages = messages.filter { it.role != "system" }
+        val lastMessages = nonSystemMessages.takeLast(strategy.maxMessages)
+
+        Log.d(TAG, "Workflow: системное + ${lastMessages.size} последних сообщений из ${nonSystemMessages.size}")
+
+        return buildList {
+            systemMessage?.let { add(it) }
             addAll(lastMessages)
         }
     }

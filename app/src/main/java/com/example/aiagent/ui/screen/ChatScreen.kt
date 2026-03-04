@@ -202,6 +202,14 @@ fun ChatScreen(
                 )
             }
 
+            // Элементы управления workflow (показываем только если workflow активен или выбрана стратегия Workflow)
+            if (state.workflowState.isActive || state.currentContextStrategy is com.example.aiagent.domain.contextStrategy.ContextStrategy.Workflow) {
+                WorkflowControls(
+                    workflowState = state.workflowState,
+                    onAction = { viewModel.handleAction(it) }
+                )
+            }
+
             // Список сообщений
             MessagesList(
                 messages = state.messages,

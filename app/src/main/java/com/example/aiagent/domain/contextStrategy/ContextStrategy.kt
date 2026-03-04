@@ -38,6 +38,14 @@ sealed interface ContextStrategy {
         override val name = "Language Learning"
         override val description = "Специальный режим для изучения языков с отслеживанием прогресса"
     }
+
+    /** Стратегия 5: Пошаговый режим (Workflow) */
+    data class Workflow(
+        val maxMessages: Int = 10
+    ) : ContextStrategy {
+        override val name = "Workflow"
+        override val description = "Пошаговый режим: планирование → выполнение → валидация → готово"
+    }
 }
 
 data class DialogFact(

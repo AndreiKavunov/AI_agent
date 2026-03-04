@@ -9,18 +9,30 @@ import com.example.aiagent.domain.RepositoryType
 import com.example.aiagent.domain.agent.UniversalAgent
 import com.example.aiagent.domain.agent.UserSettings
 import com.example.aiagent.domain.contextStrategy.ContextStrategy
+import com.example.aiagent.domain.workflow.WorkflowManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 
 class ChatViewModel(
     private val universalAgent: UniversalAgent
 ) : ViewModel() {
 
+    val TAG = "ChatViewModel"
+
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
+    
+    private val workflowManager get() = (universalAgent as? com.example.aiagent.domain.agent.UniversalAgentImpl)?.getWorkflowManager() ?: WorkflowManager()
 
     init {
         viewModelScope.launch {
@@ -54,7 +66,9 @@ class ChatViewModel(
                 totalAnswers = universalAgent.getTotalAnswers(),
                 streakDays = universalAgent.getStreakDays(),
                 // Загружаем настройки пользователя
-                userSettings = (universalAgent as? com.example.aiagent.domain.agent.UniversalAgentImpl)?.getUserSettings() ?: UserSettings.createDefault()
+                userSettings = (universalAgent as? com.example.aiagent.domain.agent.UniversalAgentImpl)?.getUserSettings() ?: UserSettings.createDefault(),
+                // Загружаем состояние workflow
+                workflowState = workflowManager.getCurrentWorkflow()
             )
         }
 
@@ -146,6 +160,12 @@ class ChatViewModel(
             is ChatAction.ShowProfileDialog -> showProfileDialog()
             is ChatAction.HideProfileDialog -> hideProfileDialog()
             is ChatAction.UpdateUserSettings -> updateUserSettings(action.settings)
+
+            // Действия для workflow (рабочего процесса)
+            is ChatAction.StartWorkflow -> startWorkflow()
+            is ChatAction.AdvanceWorkflow -> advanceWorkflow()
+            is ChatAction.RetreatWorkflow -> retreatWorkflow()
+            is ChatAction.ResetWorkflow -> resetWorkflow()
         }
     }
     
@@ -229,6 +249,49 @@ class ChatViewModel(
         }
     }
 
+    // ========== Методы для workflow (рабочего процесса) ==========
+
+    private fun startWorkflow() {
+        val lastUserMessage = _state.value.messages.lastOrNull { it is Message.UserMessage }
+        
+        if (lastUserMessage == null) {
+            // Если нет сообщений, запускаем workflow без запроса - он будет ждать первого сообщения
+            val newWorkflow = workflowManager.startWorkflow("")
+            _state.update { it.copy(workflowState = newWorkflow) }
+            Log.d(TAG, "🚀 Workflow запущен (ожидание первого сообщения): ${newWorkflow.currentStage.displayName}")
+        } else {
+            val newWorkflow = workflowManager.startWorkflow(lastUserMessage.content)
+            _state.update { it.copy(workflowState = newWorkflow) }
+            Log.d(TAG, "🚀 Workflow запущен: ${newWorkflow.currentStage.displayName}")
+        }
+    }
+
+    private fun advanceWorkflow() {
+        val nextWorkflow = workflowManager.advanceToNextStage()
+        if (nextWorkflow != null) {
+            _state.update { it.copy(workflowState = nextWorkflow) }
+            Log.d(TAG, "➡️ Переход к этапу: ${nextWorkflow.currentStage.displayName}")
+        } else {
+            Log.w(TAG, "⚠️ Не удалось перейти к следующему этапу")
+        }
+    }
+
+    private fun retreatWorkflow() {
+        val previousWorkflow = workflowManager.retreatToPreviousStage()
+        if (previousWorkflow != null) {
+            _state.update { it.copy(workflowState = previousWorkflow) }
+            Log.d(TAG, "⬅️ Возврат к этапу: ${previousWorkflow.currentStage.displayName}")
+        } else {
+            Log.w(TAG, "⚠️ Не удалось вернуться к предыдущему этапу")
+        }
+    }
+
+    private fun resetWorkflow() {
+        val newWorkflow = workflowManager.resetWorkflow()
+        _state.update { it.copy(workflowState = newWorkflow) }
+        Log.d(TAG, "🔄 Workflow сброшен")
+    }
+
     private fun updateInput(text: String) {
         _state.update { it.copy(inputText = text) }
     }
@@ -248,6 +311,7 @@ class ChatViewModel(
         viewModelScope.launch {
             universalAgent.clearHistory() // Очищает историю в БД
             universalAgent.clearLanguageLearningData() // Очищаем данные об изучении языков
+            resetWorkflow() // Сбрасываем workflow
             _state.update {
                 it.copy(
                     messages = emptyList(), // Очищаем UI сообщения
@@ -332,12 +396,17 @@ class ChatViewModel(
                     slidingWindowSize = when (strategy) {
                         is ContextStrategy.SlidingWindow -> strategy.maxMessages
                         is ContextStrategy.StickyFacts -> strategy.maxMessages
+                        is ContextStrategy.Workflow -> strategy.maxMessages
                         else -> it.slidingWindowSize
                     }
                 )
             }
             // Обновляем факты и ветки после смены стратегии
             updateFactsAndBranches()
+            // Если выбрана стратегия Workflow, запускаем workflow
+            if (strategy is ContextStrategy.Workflow) {
+                startWorkflow()
+            }
             // НЕ перезагружаем сообщения для UI - показываем только сообщения текущей сессии
         }
     }
@@ -446,6 +515,18 @@ class ChatViewModel(
                     responseTimeMs = response.responseTimeMs
                 )
 
+                // Сохраняем ответ в workflow, если он активен
+                val updatedWorkflow = if (workflowManager.isWorkflowActive()) {
+                    // Если оригинальный запрос пустой, обновляем его первым сообщением пользователя
+                    if (_state.value.workflowState.originalRequest.isEmpty()) {
+                        workflowManager.updateWorkflowRequest(text.trim())
+                    } else {
+                        workflowManager.saveStageResponse(response.text)
+                    }
+                } else {
+                    _state.value.workflowState
+                }
+
                 _state.update { currentState ->
                     currentState.copy(
                         messages = currentState.messages + assistantMessage, // Добавляем только новый ответ
@@ -457,7 +538,8 @@ class ChatViewModel(
                             tokensPerSecond = if (response.responseTimeMs > 0) {
                                 response.tokenCount / (response.responseTimeMs / 1000.0)
                             } else null
-                        )
+                        ),
+                        workflowState = updatedWorkflow
                     )
                 }
             } catch (e: Exception) {
