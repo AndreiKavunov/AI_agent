@@ -77,6 +77,7 @@ data class ChatState(
     val lastResponse: LastResponseInfo? = null,
     val tokenStats: TokenStats = TokenStats(),
     val showTokenDetails: Boolean = false,
+    val toastMessage: String? = null,
 
     // Поля для workflow (рабочего процесса)
     val workflowState: WorkflowState = WorkflowState(),

@@ -42,6 +42,9 @@ class UniversalAgentImpl(
     private val tokenCounter = TokenCounter()
     private var currentTemperature: Double = 0.7
     private val workflowManager = WorkflowManager()
+    
+    // Callback для уведомления о повторной попытке при слишком длинном ответе
+    var onResponseRetry: ((Int, Int) -> Unit)? = null
 
     // Инициализируем SummaryManager
     private val summaryManager by lazy {
@@ -122,171 +125,221 @@ class UniversalAgentImpl(
 
         return withContext(Dispatchers.IO) {
             try {
-                // Получаем все сообщения из БД
-                val allMessages = localRepository.getMessageHistory()
-                Log.d(TAG, "📚 Загружено ${allMessages.size} сообщений из БД")
+                // Получаем настройки пользователя для проверки максимальной длины ответа
+                val userSettings = getUserSettings()
+                val maxResponseLength = userSettings?.maxResponseLength ?: 0
+                var retryCount = 0
+                val maxRetries = 3
+                var finalResponse: AgentResponse? = null
+                var assistantMessageId: String? = null
+                var assistantChatMessage: ChatMessage? = null
 
-                // Получаем системный промпт с настройками пользователя
-                val systemPromptWithSettings = getSystemPromptWithSettings()
+                // Цикл для повторных попыток, если ответ слишком длинный
+                while (retryCount <= maxRetries) {
+                    // Получаем все сообщения из БД
+                    val allMessages = localRepository.getMessageHistory()
+                    Log.d(TAG, "📚 Загружено ${allMessages.size} сообщений из БД")
 
-                // Добавляем контекст workflow, если он активен
-                val finalSystemPrompt = if (workflowManager.isWorkflowActive()) {
-                    val workflowPrompt = workflowManager.getSystemPromptForCurrentStage()
-                    if (workflowPrompt != null) {
-                        systemPromptWithSettings + "\n\n" + workflowPrompt
+                    // Получаем системный промпт с настройками пользователя
+                    val systemPromptWithSettings = getSystemPromptWithSettings()
+
+                    // Добавляем контекст workflow, если он активен
+                    val finalSystemPrompt = if (workflowManager.isWorkflowActive()) {
+                        val workflowPrompt = workflowManager.getSystemPromptForCurrentStage()
+                        if (workflowPrompt != null) {
+                            systemPromptWithSettings + "\n\n" + workflowPrompt
+                        } else {
+                            systemPromptWithSettings
+                        }
                     } else {
                         systemPromptWithSettings
                     }
-                } else {
-                    systemPromptWithSettings
-                }
 
-                // Логируем финальный системный промпт
-                Log.d(TAG, "📝 ФИНАЛЬНЫЙ СИСТЕМНЫЙ ПРОМПТ:\n$finalSystemPrompt")
+                    // Логируем финальный системный промпт
+                    Log.d(TAG, "📝 ФИНАЛЬНЫЙ СИСТЕМНЫЙ ПРОМПТ:\n$finalSystemPrompt")
 
-                // Временно обновляем системный промпт в БД для текущего запроса
-                val currentSystemPrompt = localRepository.getSystemPrompt()
-                localRepository.setSystemPrompt(finalSystemPrompt)
+                    // Временно обновляем системный промпт в БД для текущего запроса
+                    val currentSystemPrompt = localRepository.getSystemPrompt()
+                    localRepository.setSystemPrompt(finalSystemPrompt)
 
-                // Перезагружаем сообщения с обновленным системным промптом
-                val messagesWithUpdatedPrompt = localRepository.getMessageHistory()
+                    // Перезагружаем сообщения с обновленным системным промптом
+                    val messagesWithUpdatedPrompt = localRepository.getMessageHistory()
 
-                // Восстанавливаем базовый системный промпт
-                localRepository.setSystemPrompt(currentSystemPrompt ?: "Ты полезный ассистент. Отвечай кратко и по делу на русском языке.")
+                    // Восстанавливаем базовый системный промпт
+                    localRepository.setSystemPrompt(currentSystemPrompt ?: "Ты полезный ассистент. Отвечай кратко и по делу на русском языке.")
 
-                // Применяем текущую стратегию контекста для подготовки сообщений к API
-                val messagesForApi = contextStrategyManager.prepareMessagesForApi(messagesWithUpdatedPrompt)
-                Log.d(TAG, "🎯 Применена стратегия: ${contextStrategyManager.getCurrentStrategy().name}")
-                Log.d(TAG, "📤 Подготовлено ${messagesForApi.size} сообщений для API")
+                    // Применяем текущую стратегию контекста для подготовки сообщений к API
+                    val messagesForApi = contextStrategyManager.prepareMessagesForApi(messagesWithUpdatedPrompt)
+                    Log.d(TAG, "🎯 Применена стратегия: ${contextStrategyManager.getCurrentStrategy().name}")
+                    Log.d(TAG, "📤 Подготовлено ${messagesForApi.size} сообщений для API")
 
-                // Конвертируем в GigaMessage
-                val apiHistory = toGigaMessages(messagesForApi)
+                    // Конвертируем в GigaMessage
+                    val apiHistory = toGigaMessages(messagesForApi)
 
-                // Детальное логирование
-                Log.d(TAG, "📤 Отправка в API (${apiHistory.size} сообщений):")
-                apiHistory.forEachIndexed { index, msg ->
-                    val role = msg.role
-                    val content = if (role == "system") {
-                        msg.content.take(200) + if (msg.content.length > 200) "..." else ""
-                    } else {
-                        msg.content.take(100) + if (msg.content.length > 100) "..." else ""
+                    // Детальное логирование
+                    Log.d(TAG, "📤 Отправка в API (${apiHistory.size} сообщений):")
+                    apiHistory.forEachIndexed { index, msg ->
+                        val role = msg.role
+                        val content = if (role == "system") {
+                            msg.content.take(200) + if (msg.content.length > 200) "..." else ""
+                        } else {
+                            msg.content.take(100) + if (msg.content.length > 100) "..." else ""
+                        }
+                        Log.d(TAG, "   [$index] ${role}: $content")
                     }
-                    Log.d(TAG, "   [$index] ${role}: $content")
-                }
 
-                // Проверяем, что system сообщение только одно
-                val systemCount = apiHistory.count { it.role == "system" }
-                if (systemCount != 1) {
-                    Log.w(TAG, "⚠️ ВНИМАНИЕ: в истории ${systemCount} system сообщений!")
-                }
-
-                // Отправляем основной запрос
-                Log.d(TAG, "🌡️ Температура: $temperature")
-                val response = when (currentType) {
-                    RepositoryType.GIGACHAT -> {
-                        gigaChatRepository.sendMessageWithHistory(
-                            history = apiHistory,
-                            temperature = temperature
-                        )
+                    // Проверяем, что system сообщение только одно
+                    val systemCount = apiHistory.count { it.role == "system" }
+                    if (systemCount != 1) {
+                        Log.w(TAG, "⚠️ ВНИМАНИЕ: в истории ${systemCount} system сообщений!")
                     }
-                    RepositoryType.HUGGINGFACE -> {
-                        huggingFaceRepository.sendMessageWithHistory(
-                            history = apiHistory,
-                            temperature = temperature,
-                        )
+
+                    // Отправляем основной запрос
+                    Log.d(TAG, "🌡️ Температура: $temperature")
+                    val response = when (currentType) {
+                        RepositoryType.GIGACHAT -> {
+                            gigaChatRepository.sendMessageWithHistory(
+                                history = apiHistory,
+                                temperature = temperature
+                            )
+                        }
+                        RepositoryType.HUGGINGFACE -> {
+                            huggingFaceRepository.sendMessageWithHistory(
+                                history = apiHistory,
+                                temperature = temperature,
+                            )
+                        }
                     }
-                }
 
-                Log.d(TAG, "✅ Основной ответ получен за ${response.responseTimeMs}ms")
-                Log.d(TAG, "📊 Токены: ${response.tokenCount}")
+                    Log.d(TAG, "✅ Ответ получен за ${response.responseTimeMs}ms")
+                    Log.d(TAG, "📊 Токены: ${response.tokenCount}")
+                    Log.d(TAG, "📏 Длина ответа: ${response.text.length} символов")
 
-                // Сохраняем ответ
-                val assistantMessageId = UUID.randomUUID().toString()
-                val assistantChatMessage = ChatMessage(
-                    id = assistantMessageId,
-                    role = "assistant",
-                    content = response.text,
-                    realTokenCount = response.tokenCount
-                )
-
-                localRepository.saveMessage(
-                    id = assistantMessageId,
-                    role = "assistant",
-                    content = response.text,
-                    repositoryType = currentType,
-                    modelName = currentHuggingFaceModel?.displayName,
-                    realTokenCount = response.tokenCount
-                )
-                Log.d(TAG, "💾 Ответ ассистента сохранен в БД: $assistantMessageId")
-
-                // Обрабатываем ответ ассистента через LanguageMemoryManager
-                launch(Dispatchers.IO) {
-                    try {
-                        val sessionId = localRepository.provideSessionId()
-                        languageMemoryManager.processMessage(
-                            sessionId = sessionId,
-                            message = assistantChatMessage,
-                            repositoryType = currentType,
-                            modelName = currentHuggingFaceModel?.displayName
-                        )
-                    } catch (e: Exception) {
-                        Log.e(TAG, "❌ Ошибка при обработке ответа в LanguageMemoryManager: ${e.message}")
-                    }
-                }
-
-                // Добавляем ответ в текущую ветку, если используется ветвление
-                if (contextStrategyManager.getCurrentStrategy() is ContextStrategy.Branching) {
-                    contextStrategyManager.addMessageToCurrentBranch(assistantChatMessage)
-                    Log.d(TAG, "🌿 Ответ добавлен в текущую ветку")
-                }
-
-                // Запускаем проверку суммаризации
-                summaryManager.checkAndSummarizeIfNeeded(currentType)
-
-                // Извлекаем факты ТОЛЬКО если это стратегия Sticky Facts
-                // и делаем это после основного ответа, чтобы не блокировать пользователя
-                if (contextStrategyManager.getCurrentStrategy() is ContextStrategy.StickyFacts) {
-                    Log.d(TAG, "🔍 Запускаем извлечение фактов из сообщения пользователя")
-
-                    // Запускаем в фоне, не блокируя возврат ответа
-                    launch(Dispatchers.IO) {
-                        try {
-                            val startTime = System.currentTimeMillis()
-                            contextStrategyManager.updateFactsWithLLM(
-                                message = message,
+                    // Проверяем длину ответа
+                    if (maxResponseLength > 0 && response.text.length > maxResponseLength) {
+                        Log.w(TAG, "⚠️ Ответ слишком длинный: ${response.text.length} символов (максимум: $maxResponseLength)")
+                        
+                        if (retryCount < maxRetries) {
+                            retryCount++
+                            Log.d(TAG, "🔄 Повторная попытка $retryCount из $maxRetries")
+                            
+                            // Вызываем callback для уведомления UI
+                            onResponseRetry?.invoke(response.text.length, maxResponseLength)
+                            
+                            // Добавляем системное сообщение с просьбой сократить ответ
+                            val shortenMessageId = UUID.randomUUID().toString()
+                            val shortenMessage = "Твой ответ слишком длинный (${response.text.length} символов). Пожалуйста, сократи ответ до $maxResponseLength символов или меньше, сохраняя основную суть."
+                            
+                            localRepository.saveMessage(
+                                id = shortenMessageId,
+                                role = "system",
+                                content = shortenMessage,
                                 repositoryType = currentType,
                                 modelName = currentHuggingFaceModel?.displayName
                             )
-                            val duration = System.currentTimeMillis() - startTime
-                            Log.d(TAG, "⏱️ Извлечение фактов заняло: ${duration}ms")
+                            Log.d(TAG, "💾 Сообщение о сокращении добавлено в БД")
+                            
+                            // Продолжаем цикл для повторной попытки
+                            continue
+                        } else {
+                            Log.e(TAG, "❌ Превышено максимальное количество попыток ($maxRetries). Ответ все еще слишком длинный.")
+                            // Возвращаем последний ответ, даже если он слишком длинный
+                        }
+                    }
 
-                            // Логируем текущие факты
-                            val currentFacts = contextStrategyManager.getCurrentFacts()
-                            if (currentFacts.isNotEmpty()) {
-                                Log.d(TAG, "📊 Текущие факты (${currentFacts.size}):")
-                                currentFacts.values.forEach { fact ->
-                                    Log.d(TAG, "   • ${fact.key}: ${fact.value} (уверенность: ${fact.confidence})")
-                                }
-                            } else {
-                                Log.d(TAG, "📊 Фактов пока нет")
-                            }
+                    // Сохраняем ответ
+                    assistantMessageId = UUID.randomUUID().toString()
+                    assistantChatMessage = ChatMessage(
+                        id = assistantMessageId,
+                        role = "assistant",
+                        content = response.text,
+                        realTokenCount = response.tokenCount
+                    )
+
+                    localRepository.saveMessage(
+                        id = assistantMessageId,
+                        role = "assistant",
+                        content = response.text,
+                        repositoryType = currentType,
+                        modelName = currentHuggingFaceModel?.displayName,
+                        realTokenCount = response.tokenCount
+                    )
+                    Log.d(TAG, "💾 Ответ ассистента сохранен в БД: $assistantMessageId")
+
+                    // Обрабатываем ответ ассистента через LanguageMemoryManager
+                    launch(Dispatchers.IO) {
+                        try {
+                            val sessionId = localRepository.provideSessionId()
+                            languageMemoryManager.processMessage(
+                                sessionId = sessionId,
+                                message = assistantChatMessage!!,
+                                repositoryType = currentType,
+                                modelName = currentHuggingFaceModel?.displayName
+                            )
                         } catch (e: Exception) {
-                            Log.e(TAG, "❌ Ошибка при извлечении фактов: ${e.message}")
-                            if (e.message?.contains("429") == true) {
-                                Log.w(TAG, "⚠️ Превышен лимит запросов, пропускаем извлечение фактов")
+                            Log.e(TAG, "❌ Ошибка при обработке ответа в LanguageMemoryManager: ${e.message}")
+                        }
+                    }
+
+                    // Добавляем ответ в текущую ветку, если используется ветвление
+                    if (contextStrategyManager.getCurrentStrategy() is ContextStrategy.Branching) {
+                        contextStrategyManager.addMessageToCurrentBranch(assistantChatMessage!!)
+                        Log.d(TAG, "🌿 Ответ добавлен в текущую ветку")
+                    }
+
+                    // Запускаем проверку суммаризации
+                    summaryManager.checkAndSummarizeIfNeeded(currentType)
+
+                    // Извлекаем факты ТОЛЬКО если это стратегия Sticky Facts
+                    // и делаем это после основного ответа, чтобы не блокировать пользователя
+                    if (contextStrategyManager.getCurrentStrategy() is ContextStrategy.StickyFacts) {
+                        Log.d(TAG, "🔍 Запускаем извлечение фактов из сообщения пользователя")
+
+                        // Запускаем в фоне, не блокируя возврат ответа
+                        launch(Dispatchers.IO) {
+                            try {
+                                val startTime = System.currentTimeMillis()
+                                contextStrategyManager.updateFactsWithLLM(
+                                    message = message,
+                                    repositoryType = currentType,
+                                    modelName = currentHuggingFaceModel?.displayName
+                                )
+                                val duration = System.currentTimeMillis() - startTime
+                                Log.d(TAG, "⏱️ Извлечение фактов заняло: ${duration}ms")
+
+                                // Логируем текущие факты
+                                val currentFacts = contextStrategyManager.getCurrentFacts()
+                                if (currentFacts.isNotEmpty()) {
+                                    Log.d(TAG, "📊 Текущие факты (${currentFacts.size}):")
+                                    currentFacts.values.forEach { fact ->
+                                        Log.d(TAG, "   • ${fact.key}: ${fact.value} (уверенность: ${fact.confidence})")
+                                    }
+                                } else {
+                                    Log.d(TAG, "📊 Фактов пока нет")
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "❌ Ошибка при извлечении фактов: ${e.message}")
+                                if (e.message?.contains("429") == true) {
+                                    Log.w(TAG, "⚠️ Превышен лимит запросов, пропускаем извлечение фактов")
+                                }
                             }
                         }
                     }
+
+                    finalResponse = AgentResponse(
+                        text = response.text,
+                        toolUsed = response.toolUsed,
+                        responseTimeMs = response.responseTimeMs,
+                        tokenCount = response.tokenCount ?: 0,
+                        promptTokens = response.promptTokens ?: 0,
+                        totalHistoryTokens = response.totalHistoryTokens ?: 0
+                    )
+                    
+                    // Выходим из цикла, если ответ прошел проверку или достигнуто максимальное количество попыток
+                    break
                 }
 
-                AgentResponse(
-                    text = response.text,
-                    toolUsed = response.toolUsed,
-                    responseTimeMs = response.responseTimeMs,
-                    tokenCount = response.tokenCount ?: 0,
-                    promptTokens = response.promptTokens ?: 0,
-                    totalHistoryTokens = response.totalHistoryTokens ?: 0
-                )
+                finalResponse!!
 
             } catch (e: Exception) {
                 Log.e(TAG, "💥 Ошибка: ${e.message}")
@@ -382,12 +435,14 @@ class UniversalAgentImpl(
         val style = localRepository.getUserSettingsStyle()
         val format = localRepository.getUserSettingsFormat()
         val constraints = localRepository.getUserSettingsConstraints()
+        val maxLength = localRepository.getUserSettingsMaxResponseLength()
 
-        return if (style != null || format != null || constraints != null) {
+        return if (style != null || format != null || constraints != null || maxLength > 0) {
             UserSettings(
                 style = style ?: "",
                 responseFormat = format ?: "",
-                constraints = constraints ?: ""
+                constraints = constraints ?: "",
+                maxResponseLength = maxLength
             )
         } else {
             null
@@ -401,7 +456,8 @@ class UniversalAgentImpl(
         localRepository.saveUserSettingsStyle(settings.style)
         localRepository.saveUserSettingsFormat(settings.responseFormat)
         localRepository.saveUserSettingsConstraints(settings.constraints)
-        Log.d(TAG, "💾 Настройки пользователя сохранены: стиль=${settings.style}, формат=${settings.responseFormat}, ограничения=${settings.constraints}")
+        localRepository.saveUserSettingsMaxResponseLength(settings.maxResponseLength)
+        Log.d(TAG, "💾 Настройки пользователя сохранены: стиль=${settings.style}, формат=${settings.responseFormat}, ограничения=${settings.constraints}, макс. длина=${settings.maxResponseLength}")
     }
 
     /**

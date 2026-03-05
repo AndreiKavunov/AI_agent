@@ -38,6 +38,7 @@ sealed interface ChatAction {
     object ShowProfileDialog : ChatAction
     object HideProfileDialog : ChatAction
     data class UpdateUserSettings(val settings: UserSettings) : ChatAction
+    object ClearToast : ChatAction
 
     // Действия для workflow (рабочего процесса)
     object StartWorkflow : ChatAction

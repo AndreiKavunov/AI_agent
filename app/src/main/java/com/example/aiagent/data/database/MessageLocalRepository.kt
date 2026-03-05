@@ -235,6 +235,14 @@ class MessageLocalRepository private constructor(
         return prefs.getString("user_settings_constraints", null)
     }
 
+    fun saveUserSettingsMaxResponseLength(maxLength: Int) {
+        prefs.edit().putInt("user_settings_max_response_length", maxLength).apply()
+    }
+
+    fun getUserSettingsMaxResponseLength(): Int {
+        return prefs.getInt("user_settings_max_response_length", 0)
+    }
+
     companion object {
         @Volatile
         private var INSTANCE: MessageLocalRepository? = null

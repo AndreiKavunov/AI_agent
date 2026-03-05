@@ -35,6 +35,15 @@ class ChatViewModel(
     private val workflowManager get() = (universalAgent as? com.example.aiagent.domain.agent.UniversalAgentImpl)?.getWorkflowManager() ?: WorkflowManager()
 
     init {
+        // Устанавливаем callback для уведомления о повторной попытке
+        (universalAgent as? com.example.aiagent.domain.agent.UniversalAgentImpl)?.onResponseRetry = { currentLength, maxLength ->
+            _state.update {
+                it.copy(
+                    toastMessage = "Ответ слишком длинный ($currentLength символов). Повторная попытка сократить до $maxLength символов..."
+                )
+            }
+        }
+        
         viewModelScope.launch {
             loadInitialData()
         }
@@ -160,6 +169,7 @@ class ChatViewModel(
             is ChatAction.ShowProfileDialog -> showProfileDialog()
             is ChatAction.HideProfileDialog -> hideProfileDialog()
             is ChatAction.UpdateUserSettings -> updateUserSettings(action.settings)
+            is ChatAction.ClearToast -> clearToast()
 
             // Действия для workflow (рабочего процесса)
             is ChatAction.StartWorkflow -> startWorkflow()
@@ -298,6 +308,10 @@ class ChatViewModel(
 
     private fun clearError() {
         _state.update { it.copy(error = null) }
+    }
+
+    private fun clearToast() {
+        _state.update { it.copy(toastMessage = null) }
     }
 
     private fun updateTemperature(temperature: Double) {

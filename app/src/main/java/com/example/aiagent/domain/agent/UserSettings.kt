@@ -10,13 +10,14 @@ import kotlinx.serialization.Serializable
 data class UserSettings(
     val style: String = "",
     val responseFormat: String = "",
-    val constraints: String = ""
+    val constraints: String = "",
+    val maxResponseLength: Int = 0
 ) {
     /**
      * Проверяет, заполнены ли настройки
      */
     fun isFilled(): Boolean {
-        return style.isNotBlank() || responseFormat.isNotBlank() || constraints.isNotBlank()
+        return style.isNotBlank() || responseFormat.isNotBlank() || constraints.isNotBlank() || maxResponseLength > 0
     }
 
     /**
@@ -36,6 +37,9 @@ data class UserSettings(
             if (constraints.isNotBlank()) {
                 appendLine("Ограничения: $constraints")
             }
+            if (maxResponseLength > 0) {
+                appendLine("Максимальная длина ответа: $maxResponseLength символов")
+            }
             append("================================\n")
         }
     }
@@ -48,7 +52,8 @@ data class UserSettings(
             return UserSettings(
                 style = "",
                 responseFormat = "",
-                constraints = ""
+                constraints = "",
+                maxResponseLength = 0
             )
         }
 

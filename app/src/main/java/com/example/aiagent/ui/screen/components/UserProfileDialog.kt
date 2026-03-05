@@ -25,6 +25,7 @@ fun UserProfileDialog(
     var style by remember { mutableStateOf(profile.style) }
     var responseFormat by remember { mutableStateOf(profile.responseFormat) }
     var constraints by remember { mutableStateOf(profile.constraints) }
+    var maxResponseLength by remember { mutableStateOf(profile.maxResponseLength.toString()) }
     var styleExpanded by remember { mutableStateOf(false) }
     var formatExpanded by remember { mutableStateOf(false) }
 
@@ -173,6 +174,29 @@ fun UserProfileDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
 
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Поле "Максимальная длина ответа"
+                    Text(
+                        text = "Максимальная длина ответа",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = maxResponseLength,
+                        onValueChange = { 
+                            // Разрешаем только цифры
+                            if (it.isEmpty() || it.all { char -> char.isDigit() }) {
+                                maxResponseLength = it
+                            }
+                        },
+                        label = { Text("Максимальное количество символов") },
+                        placeholder = { Text("0 = без ограничений") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // Информационный текст
@@ -201,7 +225,8 @@ fun UserProfileDialog(
                                 UserSettings(
                                     style = style,
                                     responseFormat = responseFormat,
-                                    constraints = constraints
+                                    constraints = constraints,
+                                    maxResponseLength = maxResponseLength.toIntOrNull() ?: 0
                                 )
                             )
                         }

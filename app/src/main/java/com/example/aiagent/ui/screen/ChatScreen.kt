@@ -1,6 +1,7 @@
 // ui/screen/ChatScreen.kt
 package com.example.aiagent.ui.screen
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,11 +58,20 @@ fun ChatScreen(
                 showContextSettings = showContextSettings
             )
         }
-    ) { innerPadding ->
+    ) { paddingValues ->
+        // Показываем тост при изменении toastMessage
+        LaunchedEffect(state.toastMessage) {
+            state.toastMessage?.let { message ->
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                // Очищаем тост после показа
+                viewModel.handleAction(ChatAction.ClearToast)
+            }
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(paddingValues)
         ) {
             // Селектор репозитория
             AnimatedVisibility(
