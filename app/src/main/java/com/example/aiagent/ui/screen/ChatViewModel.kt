@@ -49,6 +49,7 @@ class ChatViewModel(
         }
     }
 
+
     private suspend fun loadInitialData() {
         // Загружаем настройки из агента
         _state.update {
