@@ -5,6 +5,10 @@ import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import android.util.Log
@@ -49,6 +53,37 @@ class McpRepository {
             response
         } catch (e: Exception) {
             Log.e(tag, "Error fetching tools: ${e.message}", e)
+            throw e
+        }
+    }
+    
+    /**
+     * Calls a specific tool on the MCP server
+     * @param toolName The name of the tool to call
+     * @param arguments Optional arguments for the tool
+     * @return CallToolResponse containing the result
+     * @throws Exception if the request fails
+     */
+    suspend fun callTool(toolName: String, arguments: Map<String, String> = emptyMap()): CallToolResponse {
+        return try {
+            Log.d(tag, "Calling tool: $toolName")
+            
+            val request = CallToolRequest(name = toolName, arguments = arguments)
+            
+            val response: CallToolResponse = client.post("$baseUrl/call_tool") {
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }.body()
+            
+            if (response.success) {
+                Log.d(tag, "Tool $toolName executed successfully: ${response.result}")
+            } else {
+                Log.e(tag, "Tool $toolName failed: ${response.error}")
+            }
+            
+            response
+        } catch (e: Exception) {
+            Log.e(tag, "Error calling tool $toolName: ${e.message}", e)
             throw e
         }
     }

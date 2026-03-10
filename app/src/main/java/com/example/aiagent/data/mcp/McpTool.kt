@@ -32,3 +32,23 @@ data class McpToolsResponse(
     val tools: List<McpTool>,
     val count: Int
 )
+
+/**
+ * Request body for /call_tool endpoint
+ */
+@Serializable
+data class CallToolRequest(
+    val name: String,
+    val arguments: Map<String, String> = emptyMap()
+)
+
+/**
+ * Response from /call_tool endpoint
+ */
+@Serializable
+data class CallToolResponse(
+    val success: Boolean,
+    val result: String,
+    val tool: String,
+    val error: String? = null
+)
