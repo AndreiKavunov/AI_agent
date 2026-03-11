@@ -12,9 +12,10 @@ import android.content.Context
         SummaryEntity::class,
         com.example.aiagent.data.database.memory.ShortTermMemoryEntity::class,
         com.example.aiagent.data.database.memory.WorkingMemoryEntity::class,
-        com.example.aiagent.data.database.memory.LongTermMemoryEntity::class
+        com.example.aiagent.data.database.memory.LongTermMemoryEntity::class,
+        WeatherEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -22,6 +23,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
     abstract fun summaryDao(): SummaryDao
     abstract fun memoryDao(): com.example.aiagent.data.database.memory.MemoryDao
+    abstract fun weatherDao(): WeatherDao
 
     companion object {
         @Volatile

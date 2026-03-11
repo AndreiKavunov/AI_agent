@@ -6,15 +6,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.aiagent.data.mcp.McpRepository
 import com.example.aiagent.data.mcp.McpTool
 import com.example.aiagent.data.mcp.McpToolsResponse
 import com.example.aiagent.data.mcp.CallToolResponse
+import com.example.aiagent.data.weather.WeatherWorkManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -23,6 +27,7 @@ import android.util.Log
 /**
  * Simple screen to display MCP tools from the server
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun McpToolsScreen() {
     var toolsResponse by remember { mutableStateOf<McpToolsResponse?>(null) }
@@ -31,9 +36,18 @@ fun McpToolsScreen() {
     var toolResult by remember { mutableStateOf<CallToolResponse?>(null) }
     var isExecuting by remember { mutableStateOf(false) }
     var selectedToolName by remember { mutableStateOf<String?>(null) }
+    var showWeatherDialog by remember { mutableStateOf(false) }
+    var isWeatherScheduled by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     
     val repository = remember { McpRepository() }
+    val weatherWorkManager = remember { WeatherWorkManager(context) }
+    
+    // Check if weather notifications are scheduled
+    LaunchedEffect(Unit) {
+        isWeatherScheduled = weatherWorkManager.isWeatherNotificationsScheduled()
+    }
     
     // Function to fetch tools
     val fetchTools = {
@@ -81,12 +95,31 @@ fun McpToolsScreen() {
         fetchTools()
     }
     
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("MCP Server Tools") },
+                actions = {
+                    IconButton(
+                        onClick = { showWeatherDialog = true }
+                    ) {
+                        Icon(
+                            imageVector = if (isWeatherScheduled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
+                            contentDescription = if (isWeatherScheduled) "Weather notifications enabled" else "Weather notifications disabled",
+                            tint = if (isWeatherScheduled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
         // Header
         Text(
             text = "MCP Server Tools",
@@ -287,6 +320,27 @@ fun McpToolsScreen() {
                 )
             }
         }
+        }
+    }
+    
+    // Weather notification dialog
+    if (showWeatherDialog) {
+        WeatherNotificationDialog(
+            isScheduled = isWeatherScheduled,
+            onDismiss = { showWeatherDialog = false },
+            onSchedule = { intervalMinutes ->
+                weatherWorkManager.scheduleWeatherNotifications(intervalMinutes)
+                isWeatherScheduled = true
+                showWeatherDialog = false
+            },
+            onCancel = {
+                scope.launch {
+                    weatherWorkManager.cancelWeatherNotifications()
+                    isWeatherScheduled = false
+                    showWeatherDialog = false
+                }
+            }
+        )
     }
 }
 
@@ -359,4 +413,81 @@ fun ToolCard(
             }
         }
     }
+}
+
+@Composable
+fun WeatherNotificationDialog(
+    isScheduled: Boolean,
+    onDismiss: () -> Unit,
+    onSchedule: (Long) -> Unit,
+    onCancel: () -> Unit
+) {
+    var intervalMinutes by remember { mutableStateOf(30L) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(if (isScheduled) "Weather Notifications" else "Schedule Weather Notifications")
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                if (isScheduled) {
+                    Text(
+                        text = "Weather notifications are currently enabled.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "You can disable them to stop receiving weather forecasts.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                } else {
+                    Text(
+                        text = "Configure weather notification interval:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    
+                    Text(
+                        text = "Interval: $intervalMinutes minutes",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    Slider(
+                        value = intervalMinutes.toFloat(),
+                        onValueChange = { intervalMinutes = it.toLong() },
+                        valueRange = 15f..180f,
+                        steps = 10,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Text(
+                        text = "Minimum interval: 15 minutes",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (isScheduled) {
+                        onCancel()
+                    } else {
+                        onSchedule(intervalMinutes)
+                    }
+                }
+            ) {
+                Text(if (isScheduled) "Disable" else "Enable")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
