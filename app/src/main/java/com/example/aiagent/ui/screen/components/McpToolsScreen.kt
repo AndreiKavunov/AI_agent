@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +20,7 @@ import com.example.aiagent.data.mcp.McpTool
 import com.example.aiagent.data.mcp.McpToolsResponse
 import com.example.aiagent.data.mcp.CallToolResponse
 import com.example.aiagent.data.weather.WeatherWorkManager
+import com.example.aiagent.data.meetings.MeetingsWorkManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -37,16 +39,21 @@ fun McpToolsScreen() {
     var isExecuting by remember { mutableStateOf(false) }
     var selectedToolName by remember { mutableStateOf<String?>(null) }
     var showWeatherDialog by remember { mutableStateOf(false) }
+    var showMeetingsDialog by remember { mutableStateOf(false) }
     var isWeatherScheduled by remember { mutableStateOf(false) }
+    var isMeetingsScheduled by remember { mutableStateOf(false) }
+    var scheduleMeetingsWithWeather by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     
     val repository = remember { McpRepository() }
     val weatherWorkManager = remember { WeatherWorkManager(context) }
+    val meetingsWorkManager = remember { MeetingsWorkManager(context) }
     
-    // Check if weather notifications are scheduled
+    // Check if notifications are scheduled
     LaunchedEffect(Unit) {
         isWeatherScheduled = weatherWorkManager.isWeatherNotificationsScheduled()
+        isMeetingsScheduled = meetingsWorkManager.isMeetingsNotificationsScheduled()
     }
     
     // Function to fetch tools
@@ -100,6 +107,15 @@ fun McpToolsScreen() {
             TopAppBar(
                 title = { Text("MCP Server Tools") },
                 actions = {
+                    IconButton(
+                        onClick = { showMeetingsDialog = true }
+                    ) {
+                        Icon(
+                            imageVector = if (isMeetingsScheduled) Icons.Default.CalendarMonth else Icons.Default.CalendarMonth,
+                            contentDescription = if (isMeetingsScheduled) "Meetings notifications enabled" else "Meetings notifications disabled",
+                            tint = if (isMeetingsScheduled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     IconButton(
                         onClick = { showWeatherDialog = true }
                     ) {
@@ -327,17 +343,51 @@ fun McpToolsScreen() {
     if (showWeatherDialog) {
         WeatherNotificationDialog(
             isScheduled = isWeatherScheduled,
+            scheduleMeetingsWithWeather = scheduleMeetingsWithWeather,
+            onToggleMeetingsWithWeather = { scheduleMeetingsWithWeather = it },
             onDismiss = { showWeatherDialog = false },
             onSchedule = { intervalMinutes ->
+                Log.d("McpToolsScreen", "Scheduling weather notifications with interval: $intervalMinutes minutes")
                 weatherWorkManager.scheduleWeatherNotifications(intervalMinutes)
                 isWeatherScheduled = true
+                
+                // Also schedule meetings if enabled
+                if (scheduleMeetingsWithWeather) {
+                    Log.d("McpToolsScreen", "Also scheduling meetings notifications with interval: $intervalMinutes minutes")
+                    meetingsWorkManager.scheduleMeetingsNotifications(intervalMinutes)
+                    isMeetingsScheduled = true
+                }
+                
                 showWeatherDialog = false
             },
             onCancel = {
+                Log.d("McpToolsScreen", "Cancelling weather notifications")
                 scope.launch {
                     weatherWorkManager.cancelWeatherNotifications()
                     isWeatherScheduled = false
                     showWeatherDialog = false
+                }
+            }
+        )
+    }
+    
+    // Meetings notification dialog
+    if (showMeetingsDialog) {
+        MeetingsNotificationDialog(
+            isScheduled = isMeetingsScheduled,
+            onDismiss = { showMeetingsDialog = false },
+            onSchedule = { intervalMinutes ->
+                Log.d("McpToolsScreen", "Scheduling meetings notifications with interval: $intervalMinutes minutes")
+                meetingsWorkManager.scheduleMeetingsNotifications(intervalMinutes)
+                isMeetingsScheduled = true
+                showMeetingsDialog = false
+            },
+            onCancel = {
+                Log.d("McpToolsScreen", "Cancelling meetings notifications")
+                scope.launch {
+                    meetingsWorkManager.cancelMeetingsNotifications()
+                    isMeetingsScheduled = false
+                    showMeetingsDialog = false
                 }
             }
         )
@@ -418,6 +468,8 @@ fun ToolCard(
 @Composable
 fun WeatherNotificationDialog(
     isScheduled: Boolean,
+    scheduleMeetingsWithWeather: Boolean,
+    onToggleMeetingsWithWeather: (Boolean) -> Unit,
     onDismiss: () -> Unit,
     onSchedule: (Long) -> Unit,
     onCancel: () -> Unit
@@ -446,6 +498,101 @@ fun WeatherNotificationDialog(
                 } else {
                     Text(
                         text = "Configure weather notification interval:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    
+                    Text(
+                        text = "Interval: $intervalMinutes minutes",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    Slider(
+                        value = intervalMinutes.toFloat(),
+                        onValueChange = { intervalMinutes = it.toLong() },
+                        valueRange = 15f..180f,
+                        steps = 10,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Text(
+                        text = "Minimum interval: 15 minutes",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Checkbox to also schedule meetings
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = scheduleMeetingsWithWeather,
+                            onCheckedChange = onToggleMeetingsWithWeather
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Also schedule meetings notifications",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (isScheduled) {
+                        onCancel()
+                    } else {
+                        onSchedule(intervalMinutes)
+                    }
+                }
+            ) {
+                Text(if (isScheduled) "Disable" else "Enable")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun MeetingsNotificationDialog(
+    isScheduled: Boolean,
+    onDismiss: () -> Unit,
+    onSchedule: (Long) -> Unit,
+    onCancel: () -> Unit
+) {
+    var intervalMinutes by remember { mutableStateOf(30L) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(if (isScheduled) "Meetings Notifications" else "Schedule Meetings Notifications")
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                if (isScheduled) {
+                    Text(
+                        text = "Meetings notifications are currently enabled.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "You can disable them to stop receiving meeting reminders.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                } else {
+                    Text(
+                        text = "Configure meetings notification interval:",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     

@@ -12,6 +12,7 @@ import com.example.aiagent.data.database.memory.MemoryRepository
 import com.example.aiagent.data.giga.GigaChatRepository
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
+import com.example.aiagent.data.meetings.MeetingsWorkManager
 import com.example.aiagent.domain.RepositoryType
 import com.example.aiagent.domain.agent.UniversalAgent
 import com.example.aiagent.domain.agent.UniversalAgentImpl
@@ -127,5 +128,10 @@ object AppModule {
 
     suspend fun setHuggingFaceModel(modelType: HuggingFaceModel) {
         universalAgent.setHuggingFaceModel(modelType)
+    }
+
+    // Менеджер WorkManager для встреч
+    val meetingsWorkManager: MeetingsWorkManager by lazy {
+        MeetingsWorkManager(appContext)
     }
 }
