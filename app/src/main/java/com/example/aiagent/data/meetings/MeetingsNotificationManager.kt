@@ -19,8 +19,8 @@ class MeetingsNotificationManager(private val context: Context) {
     companion object {
         private const val CHANNEL_ID = "meetings_notifications"
         private const val NOTIFICATION_ID = 1002
-        private const val CHANNEL_NAME = "Meetings Notifications"
-        private const val CHANNEL_DESCRIPTION = "Notifications for meetings schedule"
+        private const val CHANNEL_NAME = "Schedule Notifications"
+        private const val CHANNEL_DESCRIPTION = "Notifications for meetings and tasks schedule"
     }
 
     init {
@@ -45,10 +45,11 @@ class MeetingsNotificationManager(private val context: Context) {
 
     fun showMeetingsNotification(meetingsData: MeetingsData) {
         Log.d(tag, "========================================")
-        Log.d(tag, "Showing meetings notification")
+        Log.d(tag, "Showing meetings and todos notification")
         Log.d(tag, "========================================")
         Log.d(tag, "Meetings data: ${meetingsData.meetings}")
-        Log.d(tag, "Meeting count: ${meetingsData.meetingCount}")
+        Log.d(tag, "Todos data: ${meetingsData.todos}")
+        Log.d(tag, "Summary: ${meetingsData.summary}")
         
         // Create intent to open app when notification is tapped
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -65,13 +66,13 @@ class MeetingsNotificationManager(private val context: Context) {
         val contentText = buildNotificationText(meetingsData)
         val bigText = buildDetailedMeetingsText(meetingsData)
         
-        Log.d(tag, "Notification title: Сегодняшние встречи")
+        Log.d(tag, "Notification title: Расписание на сегодня")
         Log.d(tag, "Notification content: $contentText")
         Log.d(tag, "Notification big text: $bigText")
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Сегодняшние встречи")
+            .setContentTitle("Расписание на сегодня")
             .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle()
                 .bigText(bigText))
@@ -94,21 +95,16 @@ class MeetingsNotificationManager(private val context: Context) {
     }
 
     private fun buildNotificationText(meetingsData: MeetingsData): String {
-        return if (meetingsData.meetingCount != null) {
+        return if (meetingsData.summary != null) {
+            meetingsData.summary
+        } else if (meetingsData.meetingCount != null) {
             "На сегодня запланировано ${meetingsData.meetingCount} встреч"
         } else {
-            "Проверьте расписание встреч на сегодня"
+            "Проверьте расписание на сегодня"
         }
     }
 
     private fun buildDetailedMeetingsText(meetingsData: MeetingsData): String {
-        return StringBuilder().apply {
-            append("📅 Расписание встреч на сегодня\n\n")
-            if (meetingsData.meetingCount != null) {
-                append("📊 Всего встреч: ${meetingsData.meetingCount}\n\n")
-            }
-            append("📝 Список встреч:\n")
-            append(meetingsData.meetings)
-        }.toString()
+        return meetingsData.summary ?: "Проверьте расписание на сегодня"
     }
 }

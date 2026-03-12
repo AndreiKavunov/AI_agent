@@ -5,7 +5,11 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class MeetingsData(
     val meetings: String,
-    val meetingCount: Int? = null
+    val meetingCount: Int? = null,
+    val todos: String? = null,
+    val todoCount: Int? = null,
+    val completedTodosCount: Int? = null,
+    val summary: String? = null
 )
 
 @Serializable
