@@ -6,7 +6,8 @@ import com.example.aiagent.data.mcp.McpRepository
 class MeetingsRepository {
     
     private val tag = "MeetingsRepository"
-    private val mcpRepository = McpRepository()
+    private val mcpRepository = McpRepository("http://192.168.0.82:8000")
+    private val todosMcpRepository = McpRepository("http://192.168.0.82:8001")
     
     /**
      * Получает список встреч из MCP сервера
@@ -14,12 +15,12 @@ class MeetingsRepository {
      */
     suspend fun getMeetings(): Result<MeetingsData> {
         Log.d(tag, "========================================")
-        Log.d(tag, "Fetching meetings from MCP server")
+        Log.d(tag, "Fetching meetings from MCP server (port 8000)")
         Log.d(tag, "========================================")
         
         return try {
-            // Вызываем инструмент get_meetings через MCP репозиторий
-            Log.d(tag, "Calling MCP tool 'get_meetings'...")
+            // Вызываем инструмент get_meetings через MCP репозиторий на порту 8000
+            Log.d(tag, "Calling MCP tool 'get_meetings' on port 8000...")
             val response = mcpRepository.callTool("get_meetings")
             
             Log.d(tag, "MCP response received")
@@ -58,13 +59,13 @@ class MeetingsRepository {
      */
     suspend fun getTodos(): Result<String> {
         Log.d(tag, "========================================")
-        Log.d(tag, "Fetching todos from MCP server")
+        Log.d(tag, "Fetching todos from MCP server (port 8001)")
         Log.d(tag, "========================================")
         
         return try {
-            // Вызываем инструмент get_todos через MCP репозиторий
-            Log.d(tag, "Calling MCP tool 'get_todos'...")
-            val response = mcpRepository.callTool("get_todos")
+            // Вызываем инструмент get_todos через MCP репозиторий на порту 8001
+            Log.d(tag, "Calling MCP tool 'get_todos' on port 8001...")
+            val response = todosMcpRepository.callTool("get_todos")
             
             Log.d(tag, "MCP response received")
             Log.d(tag, "Success: ${response.success}")
@@ -98,7 +99,8 @@ class MeetingsRepository {
      */
     suspend fun getMeetingsAndTodos(): Result<MeetingsData> {
         Log.d(tag, "========================================")
-        Log.d(tag, "Fetching meetings and todos from MCP server")
+        Log.d(tag, "Fetching meetings and todos from MCP servers")
+        Log.d(tag, "Meetings from port 8000, Todos from port 8001")
         Log.d(tag, "========================================")
         
         return try {
@@ -161,9 +163,10 @@ class MeetingsRepository {
     }
     
     /**
-     * Закрывает HTTP клиент
+     * Закрывает HTTP клиенты
      */
     fun close() {
         mcpRepository.close()
+        todosMcpRepository.close()
     }
 }

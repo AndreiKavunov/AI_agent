@@ -16,12 +16,12 @@ import android.util.Log
 /**
  * Repository for communicating with MCP server
  */
-class McpRepository {
+class McpRepository(baseUrl: String = "http://192.168.0.82:8000") {
     
     private val tag = "McpRepository"
     
     // Base URL of the MCP server
-    private val baseUrl = "http://192.168.0.82:8000"
+    private val baseUrl = baseUrl
     
     // Ktor HTTP client with JSON support
     private val client = HttpClient(CIO) {
