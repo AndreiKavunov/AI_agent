@@ -2,6 +2,8 @@
 package com.example.aiagent.ui.screen
 
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
+import com.example.aiagent.data.rag.RagContext
+import com.example.aiagent.data.rag.RagStrategy
 import com.example.aiagent.domain.RepositoryType
 import com.example.aiagent.domain.agent.UserSettings
 import com.example.aiagent.domain.contextStrategy.ContextStrategy
@@ -106,5 +108,13 @@ data class ChatState(
 
     // Поля для настроек пользователя
     val userSettings: UserSettings = UserSettings.createDefault(),
-    val showProfileDialog: Boolean = false
+    val showProfileDialog: Boolean = false,
+
+    // Поля для RAG (Retrieval-Augmented Generation)
+    val ragEnabled: Boolean = false,
+    val ragStrategy: RagStrategy = RagStrategy.FIXED,
+    val lastRagContext: RagContext? = null,
+    val showRagSettings: Boolean = false,
+    val isBuildingRagIndex: Boolean = false,
+    val ragIndexStatus: String? = null
 )

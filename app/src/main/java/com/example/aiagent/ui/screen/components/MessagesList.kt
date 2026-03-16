@@ -41,6 +41,7 @@ fun MessagesList(
     isLoading: Boolean,
     onAgentMessageLongClick: (String) -> Unit,
     onMessageLongClickForBranch: ((String) -> Unit)?,
+    ragContext: com.example.aiagent.data.rag.RagContext? = null,
     modifier: Modifier = Modifier
 ) {
     if (messages.isEmpty() && !isLoading) {
@@ -92,7 +93,8 @@ fun MessagesList(
                     is Message.AgentMessage -> AgentMessageItem(
                         message = message,
                         onLongClick = { onAgentMessageLongClick(message.content) },
-                        onBranchClick = onMessageLongClickForBranch?.let { { it(message.id) } }
+                        onBranchClick = onMessageLongClickForBranch?.let { { it(message.id) } },
+                        ragContext = ragContext
                     )
                     is Message.SystemMessage -> SystemMessageItem(message)
                 }
@@ -170,7 +172,8 @@ fun UserMessageItem(
 fun AgentMessageItem(
     message: Message.AgentMessage,
     onLongClick: () -> Unit,
-    onBranchClick: (() -> Unit)?
+    onBranchClick: (() -> Unit)?,
+    ragContext: com.example.aiagent.data.rag.RagContext? = null
 ) {
     Card(
         modifier = Modifier
@@ -291,6 +294,11 @@ fun AgentMessageItem(
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp)
             )
+
+            // RAG источники (если есть)
+            if (ragContext != null && ragContext.documents.isNotEmpty()) {
+                RagSourcesDisplay(ragContext = ragContext)
+            }
 
             // Подсказки
             Row(

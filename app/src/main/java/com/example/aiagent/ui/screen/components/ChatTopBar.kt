@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -36,6 +37,7 @@ fun ChatTopBar(
     onToggleContextSettings: () -> Unit,
     onShowTokenDetails: () -> Unit,
     onToggleProfile: () -> Unit,
+    onToggleRagSettings: () -> Unit,
     showTemperature: Boolean,
     showContextSettings: Boolean
 ) {
@@ -89,6 +91,21 @@ fun ChatTopBar(
                     contentDescription = "Настройки контекста",
                     tint = if (showContextSettings) {
                         MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
+
+            // Кнопка RAG настроек
+            IconButton(onClick = onToggleRagSettings) {
+                Icon(
+                    imageVector = Icons.Default.LibraryBooks,
+                    contentDescription = "Настройки RAG",
+                    tint = if (state.showRagSettings) {
+                        MaterialTheme.colorScheme.primary
+                    } else if (state.ragEnabled) {
+                        MaterialTheme.colorScheme.secondary
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     }

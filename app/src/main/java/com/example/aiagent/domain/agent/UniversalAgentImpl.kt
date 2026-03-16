@@ -10,6 +10,9 @@ import com.example.aiagent.data.huggingFace.ChatMessage
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.response.AgentResponse
+import com.example.aiagent.data.rag.RagClient
+import com.example.aiagent.data.rag.RagContext
+import com.example.aiagent.data.rag.RagStrategy
 import com.example.aiagent.domain.RepositoryType
 import com.example.aiagent.domain.agent.summary.SummaryManager
 import com.example.aiagent.domain.agent.memory.LanguageMemoryManager
@@ -34,7 +37,8 @@ class UniversalAgentImpl(
     private val localRepository: MessageLocalRepository,
     private val summaryDao: SummaryDao,
     private val contextStrategyManager: ContextStrategyManager,
-    private val languageMemoryManager: LanguageMemoryManager
+    private val languageMemoryManager: LanguageMemoryManager,
+    private val ragClient: RagClient
 ) : UniversalAgent {
 
     private var currentType = RepositoryType.GIGACHAT
@@ -42,6 +46,11 @@ class UniversalAgentImpl(
     private val tokenCounter = TokenCounter()
     private var currentTemperature: Double = 0.7
     private val workflowManager = WorkflowManager()
+    
+    // RAG настройки
+    private var ragStrategy: RagStrategy = RagStrategy.FIXED
+    private var ragEnabled: Boolean = false
+    private var lastRagContext: RagContext? = null
     
     // Callback для уведомления о повторной попытке при слишком длинном ответе
     var onResponseRetry: ((Int, Int) -> Unit)? = null
@@ -144,7 +153,7 @@ class UniversalAgentImpl(
                     val systemPromptWithSettings = getSystemPromptWithSettings()
 
                     // Добавляем контекст workflow, если он активен
-                    val finalSystemPrompt = if (workflowManager.isWorkflowActive()) {
+                    var finalSystemPrompt = if (workflowManager.isWorkflowActive()) {
                         val workflowPrompt = workflowManager.getSystemPromptForCurrentStage()
                         if (workflowPrompt != null) {
                             systemPromptWithSettings + "\n\n" + workflowPrompt
@@ -153,6 +162,26 @@ class UniversalAgentImpl(
                         }
                     } else {
                         systemPromptWithSettings
+                    }
+
+                    // Добавляем RAG контекст, если включен
+                    if (ragEnabled) {
+                        try {
+                            val ragResult = ragClient.askDocuments(message, ragStrategy)
+                            ragResult.fold(
+                                onSuccess = { ragContext ->
+                                    lastRagContext = ragContext
+                                    val ragContextStr = ragContext.formatForPrompt()
+                                    finalSystemPrompt = finalSystemPrompt + ragContextStr
+                                    Log.d(TAG, "📚 RAG контекст добавлен: ${ragContext.documents.size} источников")
+                                },
+                                onFailure = { error ->
+                                    Log.w(TAG, "⚠️ Ошибка при получении RAG контекста: ${error.message}")
+                                }
+                            )
+                        } catch (e: Exception) {
+                            Log.w(TAG, "⚠️ Исключение при получении RAG контекста: ${e.message}")
+                        }
                     }
 
                     // Логируем финальный системный промпт
@@ -684,4 +713,42 @@ class UniversalAgentImpl(
     fun isWorkflowActive(): Boolean = workflowManager.isWorkflowActive()
 
     fun getCurrentWorkflowStage(): String? = workflowManager.getCurrentStage()?.displayName
+
+    // ========== Методы для работы с RAG ==========
+
+    override suspend fun setRagStrategy(strategy: RagStrategy) {
+        ragStrategy = strategy
+        Log.d(TAG, "📚 Установлена RAG стратегия: ${strategy.name}")
+    }
+
+    override fun getRagStrategy(): RagStrategy = ragStrategy
+
+    override suspend fun setRagEnabled(enabled: Boolean) {
+        ragEnabled = enabled
+        Log.d(TAG, "📚 RAG ${if (enabled) "включен" else "выключен"}")
+    }
+
+    override fun isRagEnabled(): Boolean = ragEnabled
+
+    override fun getLastRagContext(): RagContext? = lastRagContext
+
+    override suspend fun buildRagIndex(strategy: RagStrategy): Result<String> {
+        return try {
+            Log.d(TAG, "🏗️ Построение RAG индекса со стратегией: ${strategy.name}")
+            val response = ragClient.buildRagIndex(strategy)
+            response.fold(
+                onSuccess = { 
+                    Log.d(TAG, "✅ RAG индекс построен: ${it.message}")
+                    Result.success(it.message)
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "❌ Ошибка при построении RAG индекса: ${error.message}")
+                    Result.failure(error)
+                }
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка при построении RAG индекса: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
 }

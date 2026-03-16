@@ -4,6 +4,8 @@ package com.example.aiagent.domain.agent
 import com.example.aiagent.data.huggingFace.ChatMessage
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.response.AgentResponse
+import com.example.aiagent.data.rag.RagContext
+import com.example.aiagent.data.rag.RagStrategy
 import com.example.aiagent.domain.RepositoryType
 import com.example.aiagent.domain.agent.memory.LearningStats
 import com.example.aiagent.domain.agent.memory.UserProfile
@@ -199,4 +201,36 @@ interface UniversalAgent {
      * Очищает рабочую память
      */
     suspend fun clearWorkingMemory()
+
+    // ========== Методы для работы с RAG ==========
+
+    /**
+     * Устанавливает стратегию чанкинга для RAG
+     */
+    suspend fun setRagStrategy(strategy: RagStrategy)
+
+    /**
+     * Возвращает текущую стратегию чанкинга для RAG
+     */
+    fun getRagStrategy(): RagStrategy
+
+    /**
+     * Включает или выключает RAG
+     */
+    suspend fun setRagEnabled(enabled: Boolean)
+
+    /**
+     * Проверяет, включен ли RAG
+     */
+    fun isRagEnabled(): Boolean
+
+    /**
+     * Возвращает последний использованный RAG контекст
+     */
+    fun getLastRagContext(): RagContext?
+
+    /**
+     * Построить RAG индекс с указанной стратегией
+     */
+    suspend fun buildRagIndex(strategy: RagStrategy): Result<String>
 }

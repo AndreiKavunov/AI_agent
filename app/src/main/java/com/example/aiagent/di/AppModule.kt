@@ -13,6 +13,8 @@ import com.example.aiagent.data.giga.GigaChatRepository
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
 import com.example.aiagent.data.meetings.MeetingsWorkManager
+import com.example.aiagent.data.rag.RagClient
+import com.example.aiagent.data.rag.RagStrategy
 import com.example.aiagent.domain.RepositoryType
 import com.example.aiagent.domain.agent.UniversalAgent
 import com.example.aiagent.domain.agent.UniversalAgentImpl
@@ -95,6 +97,11 @@ object AppModule {
         )
     }
 
+    // RAG клиент для работы с документами
+    private val ragClient: RagClient by lazy {
+        RagClient.create("http://192.168.0.82:8000")
+    }
+
     // УНИВЕРСАЛЬНЫЙ АГЕНТ
     val universalAgent: UniversalAgent by lazy {
         UniversalAgentImpl(
@@ -103,7 +110,8 @@ object AppModule {
             localRepository = messageLocalRepository,
             summaryDao = summaryDao,
             contextStrategyManager = contextStrategyManager,
-            languageMemoryManager = languageMemoryManager
+            languageMemoryManager = languageMemoryManager,
+            ragClient = ragClient
         )
     }
 
@@ -128,6 +136,23 @@ object AppModule {
 
     suspend fun setHuggingFaceModel(modelType: HuggingFaceModel) {
         universalAgent.setHuggingFaceModel(modelType)
+    }
+
+    // Методы для работы с RAG
+    suspend fun setRagStrategy(strategy: RagStrategy) {
+        universalAgent.setRagStrategy(strategy)
+    }
+
+    suspend fun getRagStrategy(): RagStrategy {
+        return universalAgent.getRagStrategy()
+    }
+
+    suspend fun isRagEnabled(): Boolean {
+        return universalAgent.isRagEnabled()
+    }
+
+    suspend fun setRagEnabled(enabled: Boolean) {
+        universalAgent.setRagEnabled(enabled)
     }
 
     // Менеджер WorkManager для встреч

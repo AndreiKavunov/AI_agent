@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.aiagent.data.huggingFace.ChatMessage
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
+import com.example.aiagent.data.rag.RagStrategy
 import com.example.aiagent.domain.RepositoryType
 import com.example.aiagent.domain.agent.UniversalAgent
 import com.example.aiagent.domain.agent.UserSettings
@@ -78,7 +79,11 @@ class ChatViewModel(
                 // Загружаем настройки пользователя
                 userSettings = (universalAgent as? com.example.aiagent.domain.agent.UniversalAgentImpl)?.getUserSettings() ?: UserSettings.createDefault(),
                 // Загружаем состояние workflow
-                workflowState = workflowManager.getCurrentWorkflow()
+                workflowState = workflowManager.getCurrentWorkflow(),
+                // Загружаем RAG настройки
+                ragEnabled = universalAgent.isRagEnabled(),
+                ragStrategy = universalAgent.getRagStrategy(),
+                lastRagContext = universalAgent.getLastRagContext()
             )
         }
 
@@ -521,6 +526,9 @@ class ChatViewModel(
                 refreshTokenStats()
                 updateFactsAndBranches()
 
+                // Обновляем RAG контекст
+                val ragContext = universalAgent.getLastRagContext()
+
                 // Создаем сообщение ассистента для UI (только текущий ответ)
                 val assistantMessage = Message.AgentMessage(
                     id = System.currentTimeMillis().toString(),
@@ -554,7 +562,8 @@ class ChatViewModel(
                                 response.tokenCount / (response.responseTimeMs / 1000.0)
                             } else null
                         ),
-                        workflowState = updatedWorkflow
+                        workflowState = updatedWorkflow,
+                        lastRagContext = ragContext
                     )
                 }
             } catch (e: Exception) {
@@ -566,5 +575,81 @@ class ChatViewModel(
                 }
             }
         }
+    }
+
+    // ========== Методы для работы с RAG ==========
+
+    /**
+     * Переключает RAG
+     */
+    fun toggleRag() {
+        viewModelScope.launch {
+            val newState = !_state.value.ragEnabled
+            universalAgent.setRagEnabled(newState)
+            _state.update { it.copy(ragEnabled = newState) }
+            Log.d(TAG, "📚 RAG ${if (newState) "включен" else "выключен"}")
+        }
+    }
+
+    /**
+     * Устанавливает стратегию RAG
+     */
+    fun setRagStrategy(strategy: RagStrategy) {
+        viewModelScope.launch {
+            universalAgent.setRagStrategy(strategy)
+            _state.update { it.copy(ragStrategy = strategy) }
+            Log.d(TAG, "📚 Установлена RAG стратегия: ${strategy.name}")
+        }
+    }
+
+    /**
+     * Показывает/скрывает настройки RAG
+     */
+    fun toggleRagSettings() {
+        _state.update { it.copy(showRagSettings = !it.showRagSettings) }
+    }
+
+    /**
+     * Строит RAG индекс с указанной стратегией
+     */
+    fun buildRagIndex(strategy: RagStrategy) {
+        viewModelScope.launch {
+            _state.update { 
+                it.copy(
+                    isBuildingRagIndex = true,
+                    ragIndexStatus = "Построение индекса..."
+                )
+            }
+            
+            val result = universalAgent.buildRagIndex(strategy)
+            
+            result.fold(
+                onSuccess = { message ->
+                    _state.update {
+                        it.copy(
+                            isBuildingRagIndex = false,
+                            ragIndexStatus = message,
+                            toastMessage = "✅ $message"
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _state.update {
+                        it.copy(
+                            isBuildingRagIndex = false,
+                            ragIndexStatus = "Ошибка: ${error.message}",
+                            toastMessage = "❌ Ошибка: ${error.message}"
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    /**
+     * Очищает статус RAG индекса
+     */
+    fun clearRagIndexStatus() {
+        _state.update { it.copy(ragIndexStatus = null) }
     }
 }

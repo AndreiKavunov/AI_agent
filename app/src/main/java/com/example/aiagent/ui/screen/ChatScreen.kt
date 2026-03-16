@@ -41,6 +41,7 @@ fun ChatScreen(
     var showRepositorySelector by remember { mutableStateOf(false) }
     var showContextSettings by remember { mutableStateOf(false) }
     var showHuggingFaceSelector by remember { mutableStateOf(false) }
+    var showRagSettings by remember { mutableStateOf(false) }
     var branchNameInput by remember { mutableStateOf("") }
     var selectedMessageForBranch by remember { mutableStateOf<String?>(null) }
 
@@ -54,6 +55,7 @@ fun ChatScreen(
                 onToggleContextSettings = { showContextSettings = !showContextSettings },
                 onShowTokenDetails = { viewModel.handleAction(ChatAction.ShowTokenDetails) },
                 onToggleProfile = { viewModel.handleAction(ChatAction.ShowProfileDialog) },
+                onToggleRagSettings = { showRagSettings = !showRagSettings },
                 showTemperature = showTemperature,
                 showContextSettings = showContextSettings
             )
@@ -232,6 +234,7 @@ fun ChatScreen(
                     selectedMessageForBranch = messageId
                     branchNameInput = ""
                 } else null,
+                ragContext = state.lastRagContext,
                 modifier = Modifier.weight(1f)
             )
 
@@ -282,6 +285,17 @@ fun ChatScreen(
             onSave = { settings ->
                 viewModel.handleAction(ChatAction.UpdateUserSettings(settings))
             }
+        )
+    }
+
+    // Диалог настроек RAG
+    if (showRagSettings) {
+        RagSettingsPanel(
+            state = state,
+            onToggleRag = { viewModel.toggleRag() },
+            onSetStrategy = { viewModel.setRagStrategy(it) },
+            onBuildIndex = { viewModel.buildRagIndex(it) },
+            onDismiss = { showRagSettings = false }
         )
     }
 }
