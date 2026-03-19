@@ -50,25 +50,42 @@ class RagClient(
             try {
                 Log.d(TAG, "🏗️ Запрос на построение RAG индекса со стратегией: ${strategy.name}")
                 
-                val request = BuildRagIndexRequest(strategy = strategy.name.lowercase())
+                val request = BuildRagIndexRequest(
+                    name = "build_rag_index",
+                    arguments = BuildRagIndexArguments(strategy = strategy.name.lowercase())
+                )
+                
+                // Логируем JSON запроса
+                val requestJson = json.encodeToString(BuildRagIndexRequest.serializer(), request)
+                Log.d(TAG, "📤 JSON запрос на построение индекса: $requestJson")
+                
+                val startTime = System.currentTimeMillis()
                 val serverResponse: RagServerResponse = client.post("$serverUrl/call_tool") {
                     contentType(ContentType.Application.Json)
                     setBody(request)
                 }.body()
+                
+                // Логируем JSON ответа
+                val responseJson = json.encodeToString(RagServerResponse.serializer(), serverResponse)
+                Log.d(TAG, "📥 JSON ответ: $responseJson")
+                
+                val buildTime = System.currentTimeMillis() - startTime
 
                 if (!serverResponse.success) {
+                    val errorMessage = serverResponse.result?.toString() ?: "Unknown error"
                     Log.e(TAG, "❌ Сервер вернул ошибку при построении индекса")
-                    return@withContext Result.failure(Exception("Server returned error: ${serverResponse.result ?: "Unknown error"}"))
+                    return@withContext Result.failure(Exception("Server returned error: $errorMessage"))
                 }
 
                 // Для build_rag_index result - это просто строка
+                val resultString = serverResponse.result?.toString() ?: "Нет ответа от сервера"
                 val response = BuildRagIndexResponse(
                     status = "success",
-                    message = serverResponse.result ?: "Нет ответа от сервера",
+                    message = resultString,
                     strategy = strategy.name
                 )
 
-                Log.d(TAG, "✅ Индекс построен: ${response.status}")
+                Log.d(TAG, "✅ Индекс построен за ${buildTime}ms: ${response.status}")
                 Result.success(response)
             } catch (e: Exception) {
                 val errorMsg = when {
@@ -93,8 +110,14 @@ class RagClient(
             Log.d(TAG, "📚 Вопрос к документам: \"$question\" со стратегией: ${strategy.name}")
             
             val request = AskDocumentsRequest(
-                question = question,
-                strategy = strategy.name.lowercase()
+                name = "ask_documents",
+                arguments = AskDocumentsArguments(
+                    question = question,
+                    strategy = strategy.name.lowercase(),
+                    rerank_method = "hybrid",
+                    initial_top_k = 10,
+                    final_top_k = 3
+                )
             )
             
             // Логируем JSON запроса
@@ -114,18 +137,19 @@ class RagClient(
             val queryTime = System.currentTimeMillis() - startTime
             
             if (!serverResponse.success) {
-                Log.e(TAG, "❌ Сервер вернул ошибку: ${serverResponse.result}")
-                return@withContext Result.failure(Exception("Server returned error: ${serverResponse.result ?: "Unknown error"}"))
+                val errorMessage = serverResponse.result?.toString() ?: "Unknown error"
+                Log.e(TAG, "❌ Сервер вернул ошибку: $errorMessage")
+                return@withContext Result.failure(Exception("Server returned error: $errorMessage"))
             }
             
-            val resultString = serverResponse.result
-            if (resultString == null) {
+            val resultElement = serverResponse.result
+            if (resultElement == null) {
                 Log.e(TAG, "❌ Сервер вернул пустой результат")
                 return@withContext Result.failure(Exception("Server returned empty result"))
             }
             
-            // Для ask_documents result - это JSON-строка, которую нужно распарсить
-            val response: AskDocumentsResponse = json.decodeFromString(resultString)
+            // Для ask_documents result - это JSON-объект, который нужно распарсить
+            val response: AskDocumentsResponse = json.decodeFromJsonElement(AskDocumentsResponse.serializer(), resultElement)
             
             Log.d(TAG, "✅ Получен ответ за ${queryTime}ms, источников: ${response.sources.size}, цитат: ${response.quotes.size}")
             

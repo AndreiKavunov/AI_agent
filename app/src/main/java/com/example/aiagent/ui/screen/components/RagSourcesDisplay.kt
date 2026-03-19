@@ -3,8 +3,6 @@ package com.example.aiagent.ui.screen.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -136,11 +134,11 @@ fun RagSourcesList(
     sources: List<RagDocumentSource>,
     strategy: com.example.aiagent.data.rag.RagStrategy
 ) {
-    LazyColumn(
+    Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        items(sources, key = { it.file + it.chunk_id }) { source ->
+        sources.forEach { source ->
             RagSourceItem(source = source)
         }
     }
@@ -388,11 +386,11 @@ fun RagQuotesToggle(
 fun RagQuotesList(
     quotes: List<String>
 ) {
-    LazyColumn(
+    Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(quotes, key = { it.hashCode() }) { quote ->
+        quotes.forEach { quote ->
             RagQuoteItem(quote = quote)
         }
     }

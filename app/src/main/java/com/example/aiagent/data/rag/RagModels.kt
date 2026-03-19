@@ -1,6 +1,7 @@
 package com.example.aiagent.data.rag
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /**
  * Стратегия чанкинга для RAG
@@ -15,6 +16,12 @@ enum class RagStrategy {
  */
 @Serializable
 data class BuildRagIndexRequest(
+    val name: String = "build_rag_index",
+    val arguments: BuildRagIndexArguments
+)
+
+@Serializable
+data class BuildRagIndexArguments(
     val strategy: String
 )
 
@@ -34,8 +41,17 @@ data class BuildRagIndexResponse(
  */
 @Serializable
 data class AskDocumentsRequest(
+    val name: String = "ask_documents",
+    val arguments: AskDocumentsArguments
+)
+
+@Serializable
+data class AskDocumentsArguments(
     val question: String,
-    val strategy: String
+    val strategy: String,
+    val rerank_method: String = "hybrid",
+    val initial_top_k: Int = 10,
+    val final_top_k: Int = 3
 )
 
 /**
@@ -66,7 +82,7 @@ data class AskDocumentsResponse(
 @Serializable
 data class RagServerResponse(
     val success: Boolean,
-    val result: String? = null,  // Сначала парсим как строку
+    val result: JsonElement? = null,  // Может быть строкой или объектом
     val server: String? = null,
     val tool: String? = null
 )
