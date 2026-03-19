@@ -43,23 +43,32 @@ data class AskDocumentsRequest(
  */
 @Serializable
 data class RagDocumentSource(
-    val filename: String,
-    val chunkId: Int,
-    val page: Int? = null,
-    val section: String? = null,
-    val relevanceScore: Double? = null
+    val file: String,
+    val chunk_id: Int,
+    val section: String,
+    val relevance: Double
 )
 
 /**
- * Ответ на вопрос к документам
+ * Ответ на вопрос к документам (новый формат)
  */
 @Serializable
 data class AskDocumentsResponse(
     val answer: String,
     val sources: List<RagDocumentSource>,
-    val strategy: String,
-    val chunksUsed: Int,
-    val queryTimeMs: Long
+    val quotes: List<String>
+)
+
+/**
+ * Обертка для ответа от сервера
+ * result может быть строкой (для build_rag_index) или объектом (для ask_documents)
+ */
+@Serializable
+data class RagServerResponse(
+    val success: Boolean,
+    val result: String? = null,  // Сначала парсим как строку
+    val server: String? = null,
+    val tool: String? = null
 )
 
 /**
@@ -100,7 +109,8 @@ data class RagContext(
     val strategy: RagStrategy,
     val documents: List<RagDocumentSource>,
     val chunksUsed: Int,
-    val formattedContext: String
+    val formattedContext: String,
+    val quotes: List<String> = emptyList()
 ) {
     /**
      * Форматирует контекст для включения в промпт LLM
@@ -112,11 +122,15 @@ data class RagContext(
             appendLine("Использовано фрагментов: $chunksUsed")
             appendLine("Источники:")
             documents.forEachIndexed { index, source ->
-                appendLine("  ${index + 1}. ${source.filename}")
-                source.page?.let { appendLine("     Страница: $it") }
-                source.section?.let { appendLine("     Раздел: $it") }
-                source.relevanceScore?.let { 
-                    appendLine("     Релевантность: ${"%.2f".format(it * 100)}%")
+                appendLine("  ${index + 1}. ${source.file}")
+                appendLine("     Раздел: ${source.section}")
+                appendLine("     ID чанка: ${source.chunk_id}")
+                appendLine("     Релевантность: ${"%.2f".format(source.relevance * 100)}%")
+            }
+            if (quotes.isNotEmpty()) {
+                appendLine("\nЦитаты:")
+                quotes.forEachIndexed { index, quote ->
+                    appendLine("  ${index + 1}. ${quote.take(150)}${if (quote.length > 150) "..." else ""}")
                 }
             }
             appendLine("=== КОНЕЦ КОНТЕКСТА ===\n")

@@ -421,7 +421,7 @@ fun RagContextInfo(context: RagContext) {
                 )
                 context.documents.take(3).forEach { source ->
                     Text(
-                        text = "• ${source.filename}",
+                        text = "• ${source.file}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onTertiaryContainer,
                         modifier = Modifier.padding(start = 8.dp)

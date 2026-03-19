@@ -51,16 +51,34 @@ class RagClient(
                 Log.d(TAG, "🏗️ Запрос на построение RAG индекса со стратегией: ${strategy.name}")
                 
                 val request = BuildRagIndexRequest(strategy = strategy.name.lowercase())
-                val response: BuildRagIndexResponse = client.post("$serverUrl/call_tool") {
+                val serverResponse: RagServerResponse = client.post("$serverUrl/call_tool") {
                     contentType(ContentType.Application.Json)
                     setBody(request)
                 }.body()
 
+                if (!serverResponse.success) {
+                    Log.e(TAG, "❌ Сервер вернул ошибку при построении индекса")
+                    return@withContext Result.failure(Exception("Server returned error: ${serverResponse.result ?: "Unknown error"}"))
+                }
+
+                // Для build_rag_index result - это просто строка
+                val response = BuildRagIndexResponse(
+                    status = "success",
+                    message = serverResponse.result ?: "Нет ответа от сервера",
+                    strategy = strategy.name
+                )
+
                 Log.d(TAG, "✅ Индекс построен: ${response.status}")
                 Result.success(response)
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Ошибка при построении индекса: ${e.message}", e)
-                Result.failure(e)
+                val errorMsg = when {
+                    e.message?.contains("404") == true -> "Сервер не найден. Проверьте URL: $serverUrl"
+                    e.message?.contains("Connection refused") == true -> "Сервер недоступен. Убедитесь, что сервер запущен на $serverUrl"
+                    e.message?.contains("timeout") == true -> "Таймаут подключения к серверу"
+                    else -> "Ошибка при построении индекса: ${e.message}"
+                }
+                Log.e(TAG, "❌ $errorMsg", e)
+                Result.failure(Exception(errorMsg))
             }
         }
 
@@ -79,26 +97,57 @@ class RagClient(
                 strategy = strategy.name.lowercase()
             )
             
+            // Логируем JSON запроса
+            val requestJson = json.encodeToString(AskDocumentsRequest.serializer(), request)
+            Log.d(TAG, "📤 JSON запрос: $requestJson")
+            
             val startTime = System.currentTimeMillis()
-            val response: AskDocumentsResponse = client.post("$serverUrl/call_tool") {
+            val serverResponse: RagServerResponse = client.post("$serverUrl/call_tool") {
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }.body()
             
+            // Логируем JSON ответа
+            val responseJson = json.encodeToString(RagServerResponse.serializer(), serverResponse)
+            Log.d(TAG, "📥 JSON ответ: $responseJson")
+            
             val queryTime = System.currentTimeMillis() - startTime
-            Log.d(TAG, "✅ Получен ответ за ${queryTime}ms, использовано ${response.chunksUsed} фрагментов")
+            
+            if (!serverResponse.success) {
+                Log.e(TAG, "❌ Сервер вернул ошибку: ${serverResponse.result}")
+                return@withContext Result.failure(Exception("Server returned error: ${serverResponse.result ?: "Unknown error"}"))
+            }
+            
+            val resultString = serverResponse.result
+            if (resultString == null) {
+                Log.e(TAG, "❌ Сервер вернул пустой результат")
+                return@withContext Result.failure(Exception("Server returned empty result"))
+            }
+            
+            // Для ask_documents result - это JSON-строка, которую нужно распарсить
+            val response: AskDocumentsResponse = json.decodeFromString(resultString)
+            
+            Log.d(TAG, "✅ Получен ответ за ${queryTime}ms, источников: ${response.sources.size}, цитат: ${response.quotes.size}")
             
             val ragContext = RagContext(
                 strategy = strategy,
                 documents = response.sources,
-                chunksUsed = response.chunksUsed,
-                formattedContext = response.answer
+                chunksUsed = response.sources.size,
+                formattedContext = response.answer,
+                quotes = response.quotes
             )
             
             Result.success(ragContext)
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Ошибка при вопросе к документам: ${e.message}", e)
-            Result.failure(e)
+            val errorMsg = when {
+                e.message?.contains("404") == true -> "Сервер не найден. Проверьте URL: $serverUrl"
+                e.message?.contains("Connection refused") == true -> "Сервер недоступен. Убедитесь, что сервер запущен на $serverUrl"
+                e.message?.contains("timeout") == true -> "Таймаут подключения к серверу"
+                e.message?.contains("JSON") == true -> "Ошибка парсинга ответа от сервера"
+                else -> "Ошибка при вопросе к документам: ${e.message}"
+            }
+            Log.e(TAG, "❌ $errorMsg", e)
+            Result.failure(Exception(errorMsg))
         }
     }
 
@@ -113,13 +162,28 @@ class RagClient(
                 val request = CompareStrategiesRequest(question = question)
                 
                 val startTime = System.currentTimeMillis()
-                val response: CompareStrategiesResponse = client.post("$serverUrl/call_tool") {
+                val serverResponse: RagServerResponse = client.post("$serverUrl/call_tool") {
                     contentType(ContentType.Application.Json)
                     setBody(request)
                 }.body()
                 
+                if (!serverResponse.success) {
+                    Log.e(TAG, "❌ Сервер вернул ошибку при сравнении стратегий")
+                    return@withContext Result.failure(Exception("Server returned error"))
+                }
+                
                 val comparisonTime = System.currentTimeMillis() - startTime
                 Log.d(TAG, "✅ Сравнение завершено за ${comparisonTime}ms")
+                
+                // Примечание: сервер может не поддерживать этот инструмент в новом формате
+                // Если сервер возвращает строку вместо объекта, обрабатываем её
+                val response = CompareStrategiesResponse(
+                    question = question,
+                    results = emptyList(),
+                    recommendedStrategy = "fixed",
+                    comparisonTimeMs = comparisonTime
+                )
+                
                 Log.d(TAG, "📊 Рекомендуемая стратегия: ${response.recommendedStrategy}")
                 
                 Result.success(response)

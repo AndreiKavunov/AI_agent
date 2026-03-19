@@ -33,6 +33,7 @@ fun RagSourcesDisplay(
     }
 
     var expanded by remember { mutableStateOf(false) }
+    var showQuotes by remember { mutableStateOf(false) }
 
     Card(
         modifier = modifier
@@ -62,6 +63,22 @@ fun RagSourcesDisplay(
                     sources = ragContext.documents,
                     strategy = ragContext.strategy
                 )
+
+                // Кнопка для отображения цитат
+                if (ragContext.quotes.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    RagQuotesToggle(
+                        quotesCount = ragContext.quotes.size,
+                        showQuotes = showQuotes,
+                        onToggleQuotes = { showQuotes = !showQuotes }
+                    )
+
+                    // Список цитат
+                    if (showQuotes) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        RagQuotesList(quotes = ragContext.quotes)
+                    }
+                }
             }
         }
     }
@@ -123,7 +140,7 @@ fun RagSourcesList(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        items(sources, key = { it.filename + it.chunkId }) { source ->
+        items(sources, key = { it.file + it.chunk_id }) { source ->
             RagSourceItem(source = source)
         }
     }
@@ -161,7 +178,7 @@ fun RagSourceItem(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = source.filename,
+                    text = source.file,
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
@@ -178,49 +195,36 @@ fun RagSourceItem(
                 SourceMetadataItem(
                     icon = Icons.Default.Tag,
                     label = "Чанк",
-                    value = "#${source.chunkId}"
+                    value = "#${source.chunk_id}"
                 )
 
-                // Страница (если есть)
-                source.page?.let { page ->
-                    SourceMetadataItem(
-                        icon = Icons.Default.MenuBook,
-                        label = "Стр.",
-                        value = "$page"
-                    )
-                }
-
-                // Раздел (если есть)
-                source.section?.let { section ->
-                    SourceMetadataItem(
-                        icon = Icons.Default.Category,
-                        label = "Раздел",
-                        value = section.take(15),
-                        maxLines = 1
-                    )
-                }
+                // Раздел
+                SourceMetadataItem(
+                    icon = Icons.Default.Category,
+                    label = "Раздел",
+                    value = source.section.take(20),
+                    maxLines = 1
+                )
             }
 
-            // Релевантность (если есть)
-            source.relevanceScore?.let { score ->
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        tint = if (score > 0.7) Color(0xFF4CAF50) else Color(0xFFFF9800),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Релевантность: ${(score * 100).toInt()}%",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (score > 0.7) Color(0xFF4CAF50) else Color(0xFFFF9800),
-                        fontWeight = FontWeight.Medium
-                    )
-                }
+            // Релевантность
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Star,
+                    contentDescription = null,
+                    tint = if (source.relevance > 0.7) Color(0xFF4CAF50) else Color(0xFFFF9800),
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "Релевантность: ${(source.relevance * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (source.relevance > 0.7) Color(0xFF4CAF50) else Color(0xFFFF9800),
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
     }
@@ -325,5 +329,108 @@ fun RagStrategyBadge(
             },
             fontWeight = FontWeight.Bold
         )
+    }
+}
+
+/**
+ * Кнопка для отображения/скрытия цитат
+ */
+@Composable
+fun RagQuotesToggle(
+    quotesCount: Int,
+    showQuotes: Boolean,
+    onToggleQuotes: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggleQuotes),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FormatQuote,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = "Цитаты из документов ($quotesCount)",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            }
+            Icon(
+                imageVector = if (showQuotes) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (showQuotes) "Свернуть цитаты" else "Развернуть цитаты",
+                tint = MaterialTheme.colorScheme.tertiary
+            )
+        }
+    }
+}
+
+/**
+ * Список цитат
+ */
+@Composable
+fun RagQuotesList(
+    quotes: List<String>
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(quotes, key = { it.hashCode() }) { quote ->
+            RagQuoteItem(quote = quote)
+        }
+    }
+}
+
+/**
+ * Элемент цитаты
+ */
+@Composable
+fun RagQuoteItem(
+    quote: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        ),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                imageVector = Icons.Default.FormatQuote,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = quote,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
