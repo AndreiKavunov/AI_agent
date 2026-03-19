@@ -49,7 +49,7 @@ class UniversalAgentImpl(
     
     // RAG настройки
     private var ragStrategy: RagStrategy = RagStrategy.FIXED
-    private var ragEnabled: Boolean = false
+    private var ragEnabled: Boolean = true
     private var lastRagContext: RagContext? = null
     
     // Callback для уведомления о повторной попытке при слишком длинном ответе
@@ -68,6 +68,7 @@ class UniversalAgentImpl(
     init {
         CoroutineScope(Dispatchers.IO).launch {
             initializeSystemPrompt()
+            initializeRagSettings()
         }
     }
 
@@ -79,6 +80,20 @@ class UniversalAgentImpl(
             }
         } catch (e: Exception) {
             Log.e(TAG, "❌ Ошибка при инициализации системного промпта: ${e.message}")
+        }
+    }
+
+    private suspend fun initializeRagSettings() {
+        try {
+            // Загружаем RAG настройки из SharedPreferences
+            ragEnabled = localRepository.isRagEnabled()
+            val strategyName = localRepository.getRagStrategy()
+            if (strategyName != null) {
+                ragStrategy = RagStrategy.valueOf(strategyName.uppercase())
+            }
+            Log.d(TAG, "📚 RAG настройки загружены: enabled=$ragEnabled, strategy=$ragStrategy")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка при инициализации RAG настроек: ${e.message}")
         }
     }
 
@@ -718,6 +733,7 @@ class UniversalAgentImpl(
 
     override suspend fun setRagStrategy(strategy: RagStrategy) {
         ragStrategy = strategy
+        localRepository.saveRagStrategy(strategy.name.lowercase())
         Log.d(TAG, "📚 Установлена RAG стратегия: ${strategy.name}")
     }
 
@@ -725,6 +741,7 @@ class UniversalAgentImpl(
 
     override suspend fun setRagEnabled(enabled: Boolean) {
         ragEnabled = enabled
+        localRepository.saveRagEnabled(enabled)
         Log.d(TAG, "📚 RAG ${if (enabled) "включен" else "выключен"}")
     }
 

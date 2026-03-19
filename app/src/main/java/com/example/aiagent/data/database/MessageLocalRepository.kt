@@ -243,6 +243,24 @@ class MessageLocalRepository private constructor(
         return prefs.getInt("user_settings_max_response_length", 0)
     }
 
+    // ========== RAG настройки ==========
+
+    fun saveRagEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("rag_enabled", enabled).apply()
+    }
+
+    fun isRagEnabled(): Boolean {
+        return prefs.getBoolean("rag_enabled", true)
+    }
+
+    fun saveRagStrategy(strategy: String) {
+        prefs.edit().putString("rag_strategy", strategy).apply()
+    }
+
+    fun getRagStrategy(): String? {
+        return prefs.getString("rag_strategy", null)
+    }
+
     companion object {
         @Volatile
         private var INSTANCE: MessageLocalRepository? = null
