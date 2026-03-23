@@ -6,6 +6,7 @@ import com.example.aiagent.data.giga.GigaChatRepository
 import com.example.aiagent.data.giga.GigaMessage
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
+import com.example.aiagent.data.local.LocalModelRepository
 import com.example.aiagent.domain.RepositoryType
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.SerializationException
@@ -14,7 +15,8 @@ private const val TAG = "FactExtractor"
 
 class FactExtractor(
     private val gigaChatRepository: GigaChatRepository,
-    private val huggingFaceRepository: HuggingFaceRepositoryImpl
+    private val huggingFaceRepository: HuggingFaceRepositoryImpl,
+    private val localModelRepository: LocalModelRepository
 ) {
 
     private val json = Json {
@@ -73,6 +75,12 @@ class FactExtractor(
                     huggingFaceRepository.sendMessageWithHistory(
                         history = history,
                         temperature = 0.3,
+                    )
+                }
+                RepositoryType.LOCAL -> {
+                    localModelRepository.sendMessageWithHistory(
+                        history = history,
+                        temperature = 0.3
                     )
                 }
             }

@@ -12,6 +12,7 @@ import com.example.aiagent.data.database.memory.MemoryRepository
 import com.example.aiagent.data.giga.GigaChatRepository
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
+import com.example.aiagent.data.local.LocalModelRepository
 import com.example.aiagent.data.meetings.MeetingsWorkManager
 import com.example.aiagent.data.rag.RagClient
 import com.example.aiagent.data.rag.RagStrategy
@@ -55,6 +56,10 @@ object AppModule {
         HuggingFaceRepositoryImpl.getInstance()
     }
 
+    private val localModelRepository: LocalModelRepository by lazy {
+        LocalModelRepository.getInstance()
+    }
+
     // Локальный репозиторий
     private val messageLocalRepository: MessageLocalRepository by lazy {
         MessageLocalRepository.getInstance(appContext)
@@ -69,7 +74,8 @@ object AppModule {
     private val factExtractor: FactExtractor by lazy {
         FactExtractor(
             gigaChatRepository = gigaChatRepository,
-            huggingFaceRepository = huggingFaceRepository
+            huggingFaceRepository = huggingFaceRepository,
+            localModelRepository = localModelRepository
         )
     }
 
@@ -77,7 +83,8 @@ object AppModule {
     private val languageFactExtractor: LanguageFactExtractor by lazy {
         LanguageFactExtractor(
             gigaChatRepository = gigaChatRepository,
-            huggingFaceRepository = huggingFaceRepository
+            huggingFaceRepository = huggingFaceRepository,
+            localModelRepository = localModelRepository
         )
     }
 
@@ -107,6 +114,7 @@ object AppModule {
         UniversalAgentImpl(
             gigaChatRepository = gigaChatRepository,
             huggingFaceRepository = huggingFaceRepository,
+            localModelRepository = localModelRepository,
             localRepository = messageLocalRepository,
             summaryDao = summaryDao,
             contextStrategyManager = contextStrategyManager,

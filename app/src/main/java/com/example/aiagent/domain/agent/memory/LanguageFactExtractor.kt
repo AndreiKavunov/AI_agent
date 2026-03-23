@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.aiagent.data.giga.GigaChatRepository
 import com.example.aiagent.data.giga.GigaMessage
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
+import com.example.aiagent.data.local.LocalModelRepository
 import com.example.aiagent.domain.RepositoryType
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -17,7 +18,8 @@ private const val TAG = "LanguageFactExtractor"
  */
 class LanguageFactExtractor(
     private val gigaChatRepository: GigaChatRepository,
-    private val huggingFaceRepository: HuggingFaceRepositoryImpl
+    private val huggingFaceRepository: HuggingFaceRepositoryImpl,
+    private val localModelRepository: LocalModelRepository
 ) {
 
     private val json = Json {
@@ -106,6 +108,12 @@ class LanguageFactExtractor(
                     huggingFaceRepository.sendMessageWithHistory(
                         history = history,
                         temperature = 0.3,
+                    )
+                }
+                RepositoryType.LOCAL -> {
+                    localModelRepository.sendMessageWithHistory(
+                        history = history,
+                        temperature = 0.3
                     )
                 }
             }

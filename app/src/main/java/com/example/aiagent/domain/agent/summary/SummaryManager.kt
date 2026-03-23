@@ -9,6 +9,7 @@ import com.example.aiagent.data.database.SummaryEntity
 import com.example.aiagent.data.giga.GigaChatRepository
 import com.example.aiagent.data.giga.GigaMessage
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
+import com.example.aiagent.data.local.LocalModelRepository
 import com.example.aiagent.data.response.AgentResponse
 import com.example.aiagent.domain.RepositoryType
 import kotlinx.coroutines.CoroutineScope
@@ -22,7 +23,8 @@ class SummaryManager(
     private val localRepository: MessageLocalRepository,
     private val summaryDao: SummaryDao,
     private val gigaChatRepository: GigaChatRepository,
-    private val huggingFaceRepository: HuggingFaceRepositoryImpl
+    private val huggingFaceRepository: HuggingFaceRepositoryImpl,
+    private val localModelRepository: LocalModelRepository
 ) {
 
     companion object {
@@ -155,6 +157,12 @@ class SummaryManager(
                     }
                     RepositoryType.HUGGINGFACE -> {
                         huggingFaceRepository.sendMessage(
+                            message = summaryPrompt,
+                            temperature = 0.3
+                        )
+                    }
+                    RepositoryType.LOCAL -> {
+                        localModelRepository.sendMessage(
                             message = summaryPrompt,
                             temperature = 0.3
                         )

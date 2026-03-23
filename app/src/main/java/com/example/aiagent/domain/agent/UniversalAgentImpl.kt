@@ -9,6 +9,7 @@ import com.example.aiagent.data.giga.GigaMessage
 import com.example.aiagent.data.huggingFace.ChatMessage
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
+import com.example.aiagent.data.local.LocalModelRepository
 import com.example.aiagent.data.response.AgentResponse
 import com.example.aiagent.data.rag.RagClient
 import com.example.aiagent.data.rag.RagContext
@@ -34,6 +35,7 @@ private const val TAG = "UniversalAgent"
 class UniversalAgentImpl(
     private val gigaChatRepository: GigaChatRepository,
     private val huggingFaceRepository: HuggingFaceRepositoryImpl,
+    private val localModelRepository: LocalModelRepository,
     private val localRepository: MessageLocalRepository,
     private val summaryDao: SummaryDao,
     private val contextStrategyManager: ContextStrategyManager,
@@ -61,7 +63,8 @@ class UniversalAgentImpl(
             localRepository = localRepository,
             summaryDao = summaryDao,
             gigaChatRepository = gigaChatRepository,
-            huggingFaceRepository = huggingFaceRepository
+            huggingFaceRepository = huggingFaceRepository,
+            localModelRepository = localModelRepository
         )
     }
 
@@ -251,6 +254,12 @@ class UniversalAgentImpl(
                             huggingFaceRepository.sendMessageWithHistory(
                                 history = apiHistory,
                                 temperature = temperature,
+                            )
+                        }
+                        RepositoryType.LOCAL -> {
+                            localModelRepository.sendMessageWithHistory(
+                                history = apiHistory,
+                                temperature = temperature
                             )
                         }
                     }

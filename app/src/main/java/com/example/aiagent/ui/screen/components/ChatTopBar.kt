@@ -53,6 +53,7 @@ fun ChatTopBar(
                     text = when (state.currentRepositoryType) {
                         RepositoryType.GIGACHAT -> "GigaChat • ${state.currentContextStrategy.name}"
                         RepositoryType.HUGGINGFACE -> "HuggingFace: ${state.huggingFaceModel.displayName} • ${state.currentContextStrategy.name}"
+                        RepositoryType.LOCAL -> "Local (Ollama) • ${state.currentContextStrategy.name}"
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
