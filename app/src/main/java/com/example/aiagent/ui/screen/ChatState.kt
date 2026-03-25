@@ -30,6 +30,7 @@ sealed interface Message {
         val tokenCount: Int = 0,
         val promptTokens: Int? = null,
         val totalHistoryTokens: Int? = null,
+        val ragContext: RagContext? = null,
         override val timestamp: Long = System.currentTimeMillis()
     ) : Message
 
@@ -111,7 +112,7 @@ data class ChatState(
     val showProfileDialog: Boolean = false,
 
     // Поля для RAG (Retrieval-Augmented Generation)
-    val ragEnabled: Boolean = false,
+    val ragEnabled: Boolean = true,
     val ragStrategy: RagStrategy = RagStrategy.FIXED,
     val lastRagContext: RagContext? = null,
     val showRagSettings: Boolean = false,

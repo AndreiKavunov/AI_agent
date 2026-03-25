@@ -183,23 +183,29 @@ class UniversalAgentImpl(
                     }
 
                     // Добавляем RAG контекст, если включен
+                    Log.d(TAG, "🔍 Проверка RAG: enabled=$ragEnabled, strategy=$ragStrategy")
                     if (ragEnabled) {
                         try {
+                            Log.d(TAG, "📡 Отправка запроса к RAG серверу...")
                             val ragResult = ragClient.askDocuments(message, ragStrategy)
                             ragResult.fold(
                                 onSuccess = { ragContext ->
                                     lastRagContext = ragContext
                                     val ragContextStr = ragContext.formatForPrompt()
                                     finalSystemPrompt = finalSystemPrompt + ragContextStr
-                                    Log.d(TAG, "📚 RAG контекст добавлен: ${ragContext.documents.size} источников")
+                                    Log.d(TAG, "📚 RAG контекст добавлен: ${ragContext.documents.size} источников, ответ: ${ragContext.ragAnswer.take(50)}...")
                                 },
                                 onFailure = { error ->
                                     Log.w(TAG, "⚠️ Ошибка при получении RAG контекста: ${error.message}")
+                                    error.printStackTrace()
                                 }
                             )
                         } catch (e: Exception) {
                             Log.w(TAG, "⚠️ Исключение при получении RAG контекста: ${e.message}")
+                            e.printStackTrace()
                         }
+                    } else {
+                        Log.d(TAG, "⚠️ RAG отключен, контекст не запрашивается")
                     }
 
                     // Логируем финальный системный промпт

@@ -234,7 +234,14 @@ fun ChatScreen(
                     selectedMessageForBranch = messageId
                     branchNameInput = ""
                 } else null,
-                ragContext = state.lastRagContext,
+                onRagSourceClick = { source ->
+                    // Показываем информацию о кликнутом источнике
+                    val sourceInfo = "📄 Файл: ${source.file}\n" +
+                            "📍 Раздел: ${source.section}\n" +
+                            "🏷️ Чанк ID: ${source.chunk_id}\n" +
+                            "⭐ Релевантность: ${(source.relevance * 100).toInt()}%"
+                    Toast.makeText(context, sourceInfo, Toast.LENGTH_LONG).show()
+                },
                 modifier = Modifier.weight(1f)
             )
 

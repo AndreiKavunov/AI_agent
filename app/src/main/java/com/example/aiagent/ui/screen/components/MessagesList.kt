@@ -41,7 +41,7 @@ fun MessagesList(
     isLoading: Boolean,
     onAgentMessageLongClick: (String) -> Unit,
     onMessageLongClickForBranch: ((String) -> Unit)?,
-    ragContext: com.example.aiagent.data.rag.RagContext? = null,
+    onRagSourceClick: ((com.example.aiagent.data.rag.RagDocumentSource) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (messages.isEmpty() && !isLoading) {
@@ -94,7 +94,7 @@ fun MessagesList(
                         message = message,
                         onLongClick = { onAgentMessageLongClick(message.content) },
                         onBranchClick = onMessageLongClickForBranch?.let { { it(message.id) } },
-                        ragContext = ragContext
+                        onRagSourceClick = onRagSourceClick
                     )
                     is Message.SystemMessage -> SystemMessageItem(message)
                 }
@@ -173,7 +173,7 @@ fun AgentMessageItem(
     message: Message.AgentMessage,
     onLongClick: () -> Unit,
     onBranchClick: (() -> Unit)?,
-    ragContext: com.example.aiagent.data.rag.RagContext? = null
+    onRagSourceClick: ((com.example.aiagent.data.rag.RagDocumentSource) -> Unit)? = null
 ) {
     Card(
         modifier = Modifier
@@ -296,8 +296,14 @@ fun AgentMessageItem(
             )
 
             // RAG источники (если есть)
-            if (ragContext != null && ragContext.documents.isNotEmpty()) {
-                RagSourcesDisplay(ragContext = ragContext)
+            if (message.ragContext != null && message.ragContext.documents.isNotEmpty()) {
+                android.util.Log.d("MessagesList", "📚 Отображение RAG источников: ${message.ragContext.documents.size}")
+                RagSourcesDisplay(
+                    ragContext = message.ragContext,
+                    onSourceClick = onRagSourceClick
+                )
+            } else {
+                android.util.Log.d("MessagesList", "📚 RAG источники не отображены: ragContext=${message.ragContext != null}, documents=${message.ragContext?.documents?.size ?: 0}")
             }
 
             // Подсказки

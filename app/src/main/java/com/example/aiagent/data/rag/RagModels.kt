@@ -126,7 +126,8 @@ data class RagContext(
     val documents: List<RagDocumentSource>,
     val chunksUsed: Int,
     val formattedContext: String,
-    val quotes: List<String> = emptyList()
+    val quotes: List<String> = emptyList(),
+    val ragAnswer: String = ""  // Ответ от RAG сервера
 ) {
     /**
      * Форматирует контекст для включения в промпт LLM

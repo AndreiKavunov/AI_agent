@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -24,7 +25,8 @@ import com.example.aiagent.data.rag.RagDocumentSource
 @Composable
 fun RagSourcesDisplay(
     ragContext: RagContext?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSourceClick: ((RagDocumentSource) -> Unit)? = null
 ) {
     if (ragContext == null || ragContext.documents.isEmpty()) {
         return
@@ -59,7 +61,8 @@ fun RagSourcesDisplay(
                 Spacer(modifier = Modifier.height(8.dp))
                 RagSourcesList(
                     sources = ragContext.documents,
-                    strategy = ragContext.strategy
+                    strategy = ragContext.strategy,
+                    onSourceClick = onSourceClick
                 )
 
                 // Кнопка для отображения цитат
@@ -132,14 +135,15 @@ fun RagContextHeader(
 @Composable
 fun RagSourcesList(
     sources: List<RagDocumentSource>,
-    strategy: com.example.aiagent.data.rag.RagStrategy
+    strategy: com.example.aiagent.data.rag.RagStrategy,
+    onSourceClick: ((RagDocumentSource) -> Unit)? = null
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         sources.forEach { source ->
-            RagSourceItem(source = source)
+            RagSourceItem(source = source, onSourceClick = onSourceClick)
         }
     }
 }
@@ -149,7 +153,8 @@ fun RagSourcesList(
  */
 @Composable
 fun RagSourceItem(
-    source: RagDocumentSource
+    source: RagDocumentSource,
+    onSourceClick: ((RagDocumentSource) -> Unit)? = null
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -163,7 +168,7 @@ fun RagSourceItem(
                 .fillMaxWidth()
                 .padding(10.dp)
         ) {
-            // Название файла
+            // Название файла (кликабельное)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 4.dp)
@@ -179,9 +184,28 @@ fun RagSourceItem(
                     text = source.file,
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    textDecoration = if (onSourceClick != null) TextDecoration.Underline else null,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .then(
+                            if (onSourceClick != null) {
+                                Modifier.clickable { onSourceClick(source) }
+                            } else {
+                                Modifier
+                            }
+                        )
                 )
+                if (onSourceClick != null) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Default.OpenInNew,
+                        contentDescription = "Открыть источник",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
             }
 
             // Метаданные источника

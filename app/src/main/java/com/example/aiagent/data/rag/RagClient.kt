@@ -158,7 +158,8 @@ class RagClient(
                 documents = response.sources,
                 chunksUsed = response.sources.size,
                 formattedContext = response.answer,
-                quotes = response.quotes
+                quotes = response.quotes,
+                ragAnswer = response.answer
             )
             
             Result.success(ragContext)

@@ -528,6 +528,7 @@ class ChatViewModel(
 
                 // Обновляем RAG контекст
                 val ragContext = universalAgent.getLastRagContext()
+                Log.d(TAG, "📚 RAG контекст получен: ${ragContext?.documents?.size ?: 0} источников")
 
                 // Создаем сообщение ассистента для UI (только текущий ответ)
                 val assistantMessage = Message.AgentMessage(
@@ -535,7 +536,8 @@ class ChatViewModel(
                     content = response.text,
                     tokenCount = response.tokenCount,
                     promptTokens = response.promptTokens,
-                    responseTimeMs = response.responseTimeMs
+                    responseTimeMs = response.responseTimeMs,
+                    ragContext = ragContext
                 )
 
                 // Сохраняем ответ в workflow, если он активен
