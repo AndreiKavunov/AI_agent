@@ -7,7 +7,8 @@ interface ChatRepository {
     // Новый метод, который принимает всю историю
     suspend fun sendMessageWithHistory(
         history: List<GigaMessage>,
-        temperature: Double
+        temperature: Double,
+        maxTokens: Int = 512
     ): AgentResponse
 
     // Старые методы больше не нужны, но оставим для обратной совместимости

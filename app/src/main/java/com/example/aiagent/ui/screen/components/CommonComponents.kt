@@ -61,7 +61,9 @@ fun ErrorMessage(
 @Composable
 fun TemperatureSlider(
     temperature: Double,
-    onTemperatureChange: (Double) -> Unit
+    onTemperatureChange: (Double) -> Unit,
+    maxTokens: Int = 512,
+    onMaxTokensChange: ((Int) -> Unit)? = null
 ) {
     Card(
         modifier = Modifier
@@ -86,6 +88,24 @@ fun TemperatureSlider(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (onMaxTokensChange != null) {
+                androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(vertical = 8.dp))
+                Text(
+                    text = "Макс. токены: $maxTokens",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Slider(
+                    value = maxTokens.toFloat(),
+                    onValueChange = { onMaxTokensChange(it.toInt()) },
+                    valueRange = 128f..4096f,
+                    steps = 39
+                )
+                Text(
+                    text = "Максимальная длина ответа",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

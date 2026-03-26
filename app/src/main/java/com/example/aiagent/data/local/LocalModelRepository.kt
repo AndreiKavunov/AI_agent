@@ -33,7 +33,7 @@ private const val TAG = "LocalModel"
 class LocalModelRepository : ChatRepository {
 
     private val baseUrl = "http://192.168.0.82:11434"
-    private val defaultModel = "phi3"
+    private val defaultModel = "qwen2.5:3b"
 
     companion object {
         @Volatile
@@ -71,7 +71,8 @@ class LocalModelRepository : ChatRepository {
 
     override suspend fun sendMessageWithHistory(
         history: List<GigaMessage>,
-        temperature: Double
+        temperature: Double,
+        maxTokens: Int
     ): AgentResponse = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
 
@@ -83,11 +84,16 @@ class LocalModelRepository : ChatRepository {
             val request = OllamaRequest(
                 model = defaultModel,
                 prompt = prompt,
-                stream = false
+                stream = false,
+                options = OllamaOptions(
+                    temperature = temperature,
+                    num_predict = maxTokens
+                )
             )
 
             Log.d(TAG, "Отправка запроса к локальной модели: $baseUrl/api/generate")
             Log.d(TAG, "Модель: ${request.model}, Промпт (первые 200 символов): ${request.prompt.take(200)}...")
+            Log.d(TAG, "Опции: temperature=${request.options?.temperature}, num_predict=${request.options?.num_predict}")
 
             val response = client.post("$baseUrl/api/generate") {
                 contentType(ContentType.Application.Json)
@@ -134,7 +140,8 @@ class LocalModelRepository : ChatRepository {
     override suspend fun sendMessage(message: String): AgentResponse {
         return sendMessageWithHistory(
             history = listOf(GigaMessage(role = "user", content = message)),
-            temperature = 0.7
+            temperature = 0.7,
+            maxTokens = 512
         )
     }
 
@@ -142,7 +149,8 @@ class LocalModelRepository : ChatRepository {
     override suspend fun sendMessage(message: String, temperature: Double): AgentResponse {
         return sendMessageWithHistory(
             history = listOf(GigaMessage(role = "user", content = message)),
-            temperature = temperature
+            temperature = temperature,
+            maxTokens = 512
         )
     }
 
@@ -189,7 +197,14 @@ class LocalModelRepository : ChatRepository {
 data class OllamaRequest(
     val model: String,
     val prompt: String,
-    val stream: Boolean
+    val stream: Boolean,
+    val options: OllamaOptions? = null
+)
+
+@Serializable
+data class OllamaOptions(
+    val temperature: Double? = null,
+    val num_predict: Int? = null
 )
 
 @Serializable

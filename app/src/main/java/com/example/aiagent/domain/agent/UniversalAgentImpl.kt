@@ -47,6 +47,7 @@ class UniversalAgentImpl(
     private var currentHuggingFaceModel: HuggingFaceModel? = null
     private val tokenCounter = TokenCounter()
     private var currentTemperature: Double = 0.7
+    private var currentMaxTokens: Int = 512
     private val workflowManager = WorkflowManager()
     
     // RAG настройки
@@ -265,7 +266,8 @@ class UniversalAgentImpl(
                         RepositoryType.LOCAL -> {
                             localModelRepository.sendMessageWithHistory(
                                 history = apiHistory,
-                                temperature = temperature
+                                temperature = temperature,
+                                maxTokens = currentMaxTokens
                             )
                         }
                     }
@@ -434,6 +436,10 @@ class UniversalAgentImpl(
 
     override suspend fun setTemperature(temperature: Double) {
         currentTemperature = temperature
+    }
+
+    override suspend fun setMaxTokens(maxTokens: Int) {
+        currentMaxTokens = maxTokens
     }
 
     // Конвертация ChatMessage в GigaMessage

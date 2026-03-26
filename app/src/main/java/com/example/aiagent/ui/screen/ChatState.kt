@@ -75,6 +75,7 @@ data class ChatState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val temperature: Double = 0.7,
+    val maxTokens: Int = 512,
     val currentRepositoryType: RepositoryType = RepositoryType.GIGACHAT,
     val huggingFaceModel: HuggingFaceModel = HuggingFaceModel.MEDIUM,
     val lastResponse: LastResponseInfo? = null,

@@ -66,7 +66,7 @@ fun RepositorySelector(
             RepositoryOption(
                 type = RepositoryType.LOCAL,
                 displayName = "Local (Ollama)",
-                description = "Локальная модель phi3",
+                description = "Локальная модель qwen2.5:3b",
                 isSelected = currentType == RepositoryType.LOCAL,
                 onClick = { onTypeSelected(RepositoryType.LOCAL) }
             )

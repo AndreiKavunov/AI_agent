@@ -19,6 +19,7 @@ interface UniversalAgent {
     suspend fun clearHistory()
     suspend fun clearAll()
     suspend fun setTemperature(temperature: Double)
+    suspend fun setMaxTokens(maxTokens: Int)
     suspend fun setSystemPrompt(prompt: String)
     suspend fun getSystemPrompt(): String?
     fun getCurrentAgentInfo(): String

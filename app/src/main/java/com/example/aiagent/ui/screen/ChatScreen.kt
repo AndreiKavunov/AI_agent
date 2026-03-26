@@ -162,6 +162,10 @@ fun ChatScreen(
                     temperature = state.temperature,
                     onTemperatureChange = { newTemperature ->
                         viewModel.handleAction(ChatAction.UpdateTemperature(newTemperature))
+                    },
+                    maxTokens = state.maxTokens,
+                    onMaxTokensChange = { newMaxTokens ->
+                        viewModel.handleAction(ChatAction.UpdateMaxTokens(newMaxTokens))
                     }
                 )
             }

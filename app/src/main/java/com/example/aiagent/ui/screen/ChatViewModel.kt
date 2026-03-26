@@ -146,6 +146,7 @@ class ChatViewModel(
             is ChatAction.SendMessage -> sendMessage(action.text)
             is ChatAction.UpdateInput -> updateInput(action.text)
             is ChatAction.UpdateTemperature -> updateTemperature(action.temperature)
+            is ChatAction.UpdateMaxTokens -> updateMaxTokens(action.maxTokens)
             is ChatAction.ClearError -> clearError()
             is ChatAction.NewChat -> newChat()
             is ChatAction.SwitchRepository -> switchRepository(action.repositoryType)
@@ -324,6 +325,13 @@ class ChatViewModel(
         viewModelScope.launch {
             universalAgent.setTemperature(temperature)
             _state.update { it.copy(temperature = temperature) }
+        }
+    }
+
+    private fun updateMaxTokens(maxTokens: Int) {
+        viewModelScope.launch {
+            universalAgent.setMaxTokens(maxTokens)
+            _state.update { it.copy(maxTokens = maxTokens) }
         }
     }
 

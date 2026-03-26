@@ -9,6 +9,7 @@ sealed interface ChatAction {
     data class SendMessage(val text: String) : ChatAction
     data class UpdateInput(val text: String) : ChatAction
     data class UpdateTemperature(val temperature: Double) : ChatAction
+    data class UpdateMaxTokens(val maxTokens: Int) : ChatAction
     object ClearError : ChatAction
     object NewChat : ChatAction
     data class SwitchRepository(val repositoryType: RepositoryType) : ChatAction

@@ -118,7 +118,8 @@ class GigaChatRepository : ChatRepository {
     // ОСНОВНОЙ МЕТОД - принимает историю от агента
     override suspend fun sendMessageWithHistory(
         history: List<GigaMessage>,
-        temperature: Double
+        temperature: Double,
+        maxTokens: Int
     ): AgentResponse {
         val startTime = System.currentTimeMillis()
         Log.d(TAG, "🚀 GigaChat получает историю из ${history.size} сообщений")
@@ -214,7 +215,7 @@ class GigaChatRepository : ChatRepository {
         val history = listOf(
             GigaMessage(role = "user", content = message)
         )
-        return sendMessageWithHistory(history, temperature)
+        return sendMessageWithHistory(history, temperature, maxTokens = 512)
     }
 
     override fun clearChatHistory() {
