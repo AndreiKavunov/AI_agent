@@ -11,7 +11,7 @@ interface ChatRepository {
         maxTokens: Int = 512
     ): AgentResponse
 
-    // Старые методы больше не нужны, но оставим для обратной совместимости
+    // Старые методы больше не нужны но оставим для обратной совместимости
     @Deprecated("Use sendMessageWithHistory instead")
     suspend fun sendMessage(message: String): AgentResponse
 
