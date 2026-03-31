@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
@@ -38,6 +39,7 @@ fun ChatTopBar(
     onShowTokenDetails: () -> Unit,
     onToggleProfile: () -> Unit,
     onToggleRagSettings: () -> Unit,
+    onTogglePrReview: () -> Unit,
     showTemperature: Boolean,
     showContextSettings: Boolean
 ) {
@@ -82,6 +84,15 @@ fun ChatTopBar(
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     }
+                )
+            }
+
+            // Кнопка PR Review
+            IconButton(onClick = onTogglePrReview) {
+                Icon(
+                    imageVector = Icons.Default.Code,
+                    contentDescription = "AI Review PR",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
