@@ -35,7 +35,7 @@ jobs:
       - name: Send to analysis server
         run: |
           # Замените URL на ваш serveo URL
-          SERVER_URL="https://ВАШ_СЕРВЕО_URL"
+          SERVER_URL="https://01e12b2c4eb2baac-81-177-127-25.serveousercontent.com"
           
           cat > request.json << EOF
           {
