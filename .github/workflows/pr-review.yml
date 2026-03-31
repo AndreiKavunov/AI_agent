@@ -72,7 +72,7 @@ jobs:
           # ВАЖНО: Ваш сервер должен быть доступен из интернета!
           # Для тестирования можно использовать ngrok или развернуть на VPS
           
-          curl -X POST http://192.168.0.82:8000/review_pr \
+          curl -X POST https://01e12b2c4eb2baac-81-177-127-25.serveousercontent.com/review_pr \
             -H "Content-Type: application/json" \
             -d @request.json \
             -o review_result.json
