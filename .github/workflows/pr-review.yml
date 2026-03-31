@@ -34,8 +34,8 @@ jobs:
           
       - name: Send to analysis server
         run: |
-          # Замените URL на ваш serveo URL
-          SERVER_URL="https://01e12b2c4eb2baac-81-177-127-25.serveousercontent.com"
+          # Используем localtunnel URL
+          SERVER_URL="https://aia-gent.loca.lt"
           
           cat > request.json << EOF
           {
