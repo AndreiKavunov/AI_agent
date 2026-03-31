@@ -154,3 +154,59 @@ data class RagContext(
         }
     }
 }
+
+/**
+ * Pull Request информация
+ */
+@Serializable
+data class PullRequest(
+    val pr_number: String,
+    val repo: String,
+    val changed_files: List<String>,
+    val created_at: String
+)
+
+/**
+ * Ответ с списком ожидающих PR
+ */
+@Serializable
+data class PendingPrsResponse(
+    val success: Boolean,
+    val count: Int,
+    val prs: List<PullRequest>
+)
+
+/**
+ * Детальная информация о PR
+ */
+@Serializable
+data class PrInfo(
+    val pr_number: String,
+    val repo: String,
+    val changed_files: List<String>,
+    val prompt: String,
+    val status: String
+)
+
+/**
+ * Ответ с детальной информацией о PR
+ */
+@Serializable
+data class PrInfoResponse(
+    val success: Boolean,
+    val pr_number: String,
+    val repo: String,
+    val changed_files: List<String>,
+    val prompt: String,
+    val status: String
+)
+
+/**
+ * Ответ с diff конкретного PR
+ */
+@Serializable
+data class PrDiffResponse(
+    val success: Boolean,
+    val pr_number: String,
+    val diff: String
+)

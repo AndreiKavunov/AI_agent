@@ -259,6 +259,75 @@ class RagClient(
     }
 
     /**
+     * Получить список ожидающих ревью PR
+     */
+    suspend fun getPendingPrs(): Result<PendingPrsResponse> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "📋 Запрос списка ожидающих PR")
+            
+            val response: PendingPrsResponse = client.get("$serverUrl/get_pending_prs").body()
+            
+            Log.d(TAG, "✅ Получено ${response.count} PR")
+            Result.success(response)
+        } catch (e: Exception) {
+            val errorMsg = when {
+                e.message?.contains("404") == true -> "Эндпоинт не найден. Проверьте URL: $serverUrl"
+                e.message?.contains("Connection refused") == true -> "Сервер недоступен. Убедитесь, что сервер запущен на $serverUrl"
+                e.message?.contains("timeout") == true -> "Таймаут подключения к серверу"
+                else -> "Ошибка при получении списка PR: ${e.message}"
+            }
+            Log.e(TAG, "❌ $errorMsg", e)
+            Result.failure(Exception(errorMsg))
+        }
+    }
+
+    /**
+     * Получить детальную информацию о PR
+     */
+    suspend fun getPrInfo(prNumber: String): Result<PrInfoResponse> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "📄 Запрос информации о PR #$prNumber")
+            
+            val response: PrInfoResponse = client.get("$serverUrl/get_pr_info/$prNumber").body()
+            
+            Log.d(TAG, "✅ Получена информация о PR #$prNumber")
+            Result.success(response)
+        } catch (e: Exception) {
+            val errorMsg = when {
+                e.message?.contains("404") == true -> "PR не найден. Проверьте номер PR: $prNumber"
+                e.message?.contains("Connection refused") == true -> "Сервер недоступен. Убедитесь, что сервер запущен на $serverUrl"
+                e.message?.contains("timeout") == true -> "Таймаут подключения к серверу"
+                else -> "Ошибка при получении информации о PR: ${e.message}"
+            }
+            Log.e(TAG, "❌ $errorMsg", e)
+            Result.failure(Exception(errorMsg))
+        }
+    }
+
+    /**
+     * Получить diff конкретного PR
+     */
+    suspend fun getPrDiff(prNumber: String): Result<PrDiffResponse> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "📝 Запрос diff для PR #$prNumber")
+            
+            val response: PrDiffResponse = client.get("$serverUrl/get_pr_diff/$prNumber").body()
+            
+            Log.d(TAG, "✅ Получен diff для PR #$prNumber, размер: ${response.diff.length} символов")
+            Result.success(response)
+        } catch (e: Exception) {
+            val errorMsg = when {
+                e.message?.contains("404") == true -> "PR не найден. Проверьте номер PR: $prNumber"
+                e.message?.contains("Connection refused") == true -> "Сервер недоступен. Убедитесь, что сервер запущен на $serverUrl"
+                e.message?.contains("timeout") == true -> "Таймаут подключения к серверу"
+                else -> "Ошибка при получении diff PR: ${e.message}"
+            }
+            Log.e(TAG, "❌ $errorMsg", e)
+            Result.failure(Exception(errorMsg))
+        }
+    }
+
+    /**
      * Закрыть клиент и освободить ресурсы
      */
     fun close() {

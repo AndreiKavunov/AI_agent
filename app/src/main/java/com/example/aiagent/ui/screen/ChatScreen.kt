@@ -42,6 +42,7 @@ fun ChatScreen(
     var showContextSettings by remember { mutableStateOf(false) }
     var showHuggingFaceSelector by remember { mutableStateOf(false) }
     var showRagSettings by remember { mutableStateOf(false) }
+    var showPrReviewDialog by remember { mutableStateOf(false) }
     var branchNameInput by remember { mutableStateOf("") }
     var selectedMessageForBranch by remember { mutableStateOf<String?>(null) }
 
@@ -56,6 +57,7 @@ fun ChatScreen(
                 onShowTokenDetails = { viewModel.handleAction(ChatAction.ShowTokenDetails) },
                 onToggleProfile = { viewModel.handleAction(ChatAction.ShowProfileDialog) },
                 onToggleRagSettings = { showRagSettings = !showRagSettings },
+                onTogglePrReview = { showPrReviewDialog = !showPrReviewDialog },
                 showTemperature = showTemperature,
                 showContextSettings = showContextSettings
             )
@@ -307,6 +309,25 @@ fun ChatScreen(
             onSetStrategy = { viewModel.setRagStrategy(it) },
             onBuildIndex = { viewModel.buildRagIndex(it) },
             onDismiss = { showRagSettings = false }
+        )
+    }
+
+    // Диалог PR Review
+    if (showPrReviewDialog) {
+        PrReviewDialog(
+            onDismiss = { showPrReviewDialog = false },
+            onReviewRequest = { prNumber, repo, diff ->
+                // Send the review request as a message to the AI agent
+                val reviewMessage = buildString {
+                    appendLine("🔍 PR Review Request")
+                    appendLine("PR #$prNumber in $repo")
+                    appendLine()
+                    appendLine("Please review this Pull Request diff:")
+                    appendLine()
+                    appendLine(diff)
+                }
+                viewModel.handleAction(ChatAction.SendMessage(reviewMessage))
+            }
         )
     }
 }
