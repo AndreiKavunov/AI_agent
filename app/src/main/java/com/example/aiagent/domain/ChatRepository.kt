@@ -4,7 +4,7 @@ import com.example.aiagent.data.giga.GigaMessage
 import com.example.aiagent.data.response.AgentResponse
 
 interface ChatRepository {
-    // Новый метод, который принимает всю историю
+
     suspend fun sendMessageWithHistory(
         history: List<GigaMessage>,
         temperature: Double,
