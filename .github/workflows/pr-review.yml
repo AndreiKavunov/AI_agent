@@ -1,0 +1,115 @@
+name: AI Code Review
+
+# Когда запускать Action
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - develop
+      - main
+
+# Разрешения для токена (нужны для создания комментариев)
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  ai-review:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. Получаем код репозитория
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Нужно для получения полной истории
+          
+      # 2. Получаем информацию о PR и diff
+      - name: Get PR information
+        id: pr_info
+        run: |
+          # Получаем номер PR из события
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          
+          # Получаем diff изменений
+          curl -s \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3.diff" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER" \
+            > pr.diff
+          
+          # Сохраняем diff как переменную
+          DIFF_CONTENT=$(cat pr.diff)
+          echo "diff_content<<EOF" >> $GITHUB_OUTPUT
+          echo "$DIFF_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # Получаем список измененных файлов
+          curl -s \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER/files" \
+            > pr_files.json
+          
+          echo "changed_files=$(jq -r '.[].filename' pr_files.json | tr '\n' ',' | sed 's/,$//')" >> $GITHUB_OUTPUT
+          
+      # 3. Отправляем запрос на ваш RAG сервер
+      - name: Send to AI Review Server
+        id: ai_review
+        run: |
+          # Формируем JSON для отправки
+          cat > request.json << EOF
+          {
+            "diff": $(cat pr.diff | jq -Rs .),
+            "pr_number": "${{ steps.pr_info.outputs.pr_number }}",
+            "repo": "${{ github.repository }}",
+            "changed_files": "${{ steps.pr_info.outputs.changed_files }}"
+          }
+          EOF
+          
+          # Отправляем запрос на сервер
+          # ВАЖНО: Ваш сервер должен быть доступен из интернета!
+          # Для тестирования можно использовать ngrok или развернуть на VPS
+          
+          curl -X POST http://192.168.0.82:8000/review_pr \
+            -H "Content-Type: application/json" \
+            -d @request.json \
+            -o review_result.json
+          
+          # Сохраняем результат
+          REVIEW_TEXT=$(jq -r '.review' review_result.json)
+          echo "review_text<<EOF" >> $GITHUB_OUTPUT
+          echo "$REVIEW_TEXT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+      # 4. Публикуем ревью в PR
+      - name: Post review comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const reviewText = `${{ steps.ai_review.outputs.review_text }}`;
+            
+            if (!reviewText || reviewText === 'null') {
+              console.log('Нет текста ревью');
+              return;
+            }
+            
+            const comment = `## 🤖 AI Code Review\n\n${reviewText}\n\n---\n*Это автоматическое ревью. Пожалуйста, проверьте рекомендации.*`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.pr_info.outputs.pr_number }},
+              body: comment
+            });
+            
+      # 5. (Опционально) Добавляем лейблы на основе ревью
+      - name: Add labels based on review
+        if: always()
+        run: |
+          # Если есть критические замечания, добавляем лейбл
+          if grep -q "🔴" review_result.json; then
+            echo "Критические замечания найдены"
+            # Можно добавить лейбл "needs-review"
+          fi
