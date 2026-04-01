@@ -111,39 +111,13 @@ class UniversalAgentImpl(
         Log.d(TAG, "🚀 UniversalAgent обрабатывает сообщение через ${currentType}")
         Log.d(TAG, "📝 Текст сообщения: $message")
 
-        // Сохраняем сообщение пользователя
+        // Создаем сообщение пользователя (без сохранения в БД на главном потоке)
         val userMessageId = UUID.randomUUID().toString()
         val userChatMessage = ChatMessage(
             id = userMessageId,
             role = "user",
             content = message
         )
-
-        localRepository.saveMessage(
-            id = userMessageId,
-            role = "user",
-            content = message,
-            repositoryType = currentType,
-            modelName = currentHuggingFaceModel?.displayName
-        )
-        Log.d(TAG, "💾 Сообщение пользователя сохранено в БД: $userMessageId")
-
-        // Обрабатываем сообщение через LanguageMemoryManager
-        withContext(Dispatchers.IO) {
-            launch(Dispatchers.IO) {
-            try {
-                val sessionId = localRepository.provideSessionId()
-                languageMemoryManager.processMessage(
-                    sessionId = sessionId,
-                    message = userChatMessage,
-                    repositoryType = currentType,
-                    modelName = currentHuggingFaceModel?.displayName
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Ошибка при обработке сообщения в LanguageMemoryManager: ${e.message}")
-            }
-            }
-        }
 
         // Добавляем сообщение в текущую ветку, если используется ветвление
         if (contextStrategyManager.getCurrentStrategy() is ContextStrategy.Branching) {
@@ -152,6 +126,35 @@ class UniversalAgentImpl(
         }
 
         return withContext(Dispatchers.IO) {
+            // Сохраняем сообщение пользователя в БД на IO потоке
+            try {
+                localRepository.saveMessage(
+                    id = userMessageId,
+                    role = "user",
+                    content = message,
+                    repositoryType = currentType,
+                    modelName = currentHuggingFaceModel?.displayName
+                )
+                Log.d(TAG, "💾 Сообщение пользователя сохранено в БД: $userMessageId")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Ошибка при сохранении сообщения пользователя: ${e.message}")
+                throw e
+            }
+
+            // Обрабатываем сообщение через LanguageMemoryManager на IO потоке
+            launch(Dispatchers.IO) {
+                try {
+                    val sessionId = localRepository.provideSessionId()
+                    languageMemoryManager.processMessage(
+                        sessionId = sessionId,
+                        message = userChatMessage,
+                        repositoryType = currentType,
+                        modelName = currentHuggingFaceModel?.displayName
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "❌ Ошибка при обработке сообщения в LanguageMemoryManager: ${e.message}")
+                }
+            }
             try {
                 // Получаем настройки пользователя для проверки максимальной длины ответа
                 val userSettings = getUserSettings()

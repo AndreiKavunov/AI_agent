@@ -21,6 +21,7 @@ sealed class BottomNavItem(
     object Settings : BottomNavItem("settings", Icons.Default.Settings, "Settings")
     object Profile : BottomNavItem("profile", Icons.Default.Person, "Profile")
     object Tools : BottomNavItem("tools", Icons.Default.Build, "Tools")
+    object Support : BottomNavItem("support", Icons.Default.HeadsetMic, "Поддержка")
 }
 
 @Composable
@@ -28,14 +29,16 @@ fun MainNavigation(
     chatScreen: @Composable () -> Unit,
     settingsScreen: @Composable () -> Unit,
     profileScreen: @Composable () -> Unit,
-    toolsScreen: @Composable () -> Unit
+    toolsScreen: @Composable () -> Unit,
+    supportScreen: @Composable () -> Unit
 ) {
     var selectedItem by remember { mutableStateOf(0) }
     val items = listOf(
         BottomNavItem.Chat,
         BottomNavItem.Settings,
         BottomNavItem.Profile,
-        BottomNavItem.Tools
+        BottomNavItem.Tools,
+        BottomNavItem.Support
     )
 
     Scaffold(
@@ -86,6 +89,7 @@ fun MainNavigation(
                     1 -> settingsScreen()
                     2 -> profileScreen()
                     3 -> toolsScreen()
+                    4 -> supportScreen()
                 }
             }
         }

@@ -23,6 +23,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 
 class ChatViewModel(
     private val universalAgent: UniversalAgent
@@ -524,7 +525,8 @@ class ChatViewModel(
             )
         }
 
-        viewModelScope.launch {
+        // Launch on IO dispatcher to avoid blocking the main thread
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 val response = universalAgent.processMessage(
                     message = text.trim(),
