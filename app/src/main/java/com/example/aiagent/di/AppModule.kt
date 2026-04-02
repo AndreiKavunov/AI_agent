@@ -13,6 +13,7 @@ import com.example.aiagent.data.giga.GigaChatRepository
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
 import com.example.aiagent.data.local.LocalModelRepository
+import com.example.aiagent.data.mcp.McpRepository
 import com.example.aiagent.data.meetings.MeetingsWorkManager
 import com.example.aiagent.data.rag.RagClient
 import com.example.aiagent.data.rag.RagStrategy
@@ -109,6 +110,11 @@ object AppModule {
         RagClient.create("http://192.168.0.82:8000")
     }
 
+    // MCP репозиторий для работы с инструментами
+    private val mcpRepository: McpRepository by lazy {
+        McpRepository("http://192.168.0.82:8000")
+    }
+
     // УНИВЕРСАЛЬНЫЙ АГЕНТ
     val universalAgent: UniversalAgent by lazy {
         UniversalAgentImpl(
@@ -119,7 +125,8 @@ object AppModule {
             summaryDao = summaryDao,
             contextStrategyManager = contextStrategyManager,
             languageMemoryManager = languageMemoryManager,
-            ragClient = ragClient
+            ragClient = ragClient,
+            mcpRepository = mcpRepository
         )
     }
 

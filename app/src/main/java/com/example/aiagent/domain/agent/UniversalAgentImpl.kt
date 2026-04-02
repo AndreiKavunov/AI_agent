@@ -10,19 +10,21 @@ import com.example.aiagent.data.huggingFace.ChatMessage
 import com.example.aiagent.data.huggingFace.HuggingFaceRepositoryImpl
 import com.example.aiagent.data.huggingFace.HuggingFaceModel
 import com.example.aiagent.data.local.LocalModelRepository
+import com.example.aiagent.data.mcp.McpRepository
 import com.example.aiagent.data.response.AgentResponse
 import com.example.aiagent.data.rag.RagClient
 import com.example.aiagent.data.rag.RagContext
 import com.example.aiagent.data.rag.RagStrategy
 import com.example.aiagent.domain.RepositoryType
-import com.example.aiagent.domain.agent.summary.SummaryManager
 import com.example.aiagent.domain.agent.memory.LanguageMemoryManager
-import com.example.aiagent.domain.agent.memory.UserProfile
 import com.example.aiagent.domain.agent.memory.LearningStats
+import com.example.aiagent.domain.agent.memory.UserProfile
+import com.example.aiagent.domain.agent.summary.SummaryManager
 import com.example.aiagent.domain.contextStrategy.ContextStrategy
 import com.example.aiagent.domain.contextStrategy.ContextStrategyManager
-import com.example.aiagent.domain.contextStrategy.DialogFact
 import com.example.aiagent.domain.contextStrategy.DialogBranch
+import com.example.aiagent.domain.contextStrategy.DialogFact
+import com.example.aiagent.domain.fileops.FileCommandProcessor
 import com.example.aiagent.domain.workflow.WorkflowManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +42,8 @@ class UniversalAgentImpl(
     private val summaryDao: SummaryDao,
     private val contextStrategyManager: ContextStrategyManager,
     private val languageMemoryManager: LanguageMemoryManager,
-    private val ragClient: RagClient
+    private val ragClient: RagClient,
+    private val mcpRepository: McpRepository
 ) : UniversalAgent {
 
     private var currentType = RepositoryType.GIGACHAT
@@ -54,6 +57,9 @@ class UniversalAgentImpl(
     private var ragStrategy: RagStrategy = RagStrategy.FIXED
     private var ragEnabled: Boolean = true
     private var lastRagContext: RagContext? = null
+    
+    // Файловые операции
+    private val fileCommandProcessor = FileCommandProcessor(mcpRepository)
     
     // Callback для уведомления о повторной попытке при слишком длинном ответе
     var onResponseRetry: ((Int, Int) -> Unit)? = null
@@ -110,6 +116,24 @@ class UniversalAgentImpl(
     override suspend fun processMessage(message: String, temperature: Double): AgentResponse {
         Log.d(TAG, "🚀 UniversalAgent обрабатывает сообщение через ${currentType}")
         Log.d(TAG, "📝 Текст сообщения: $message")
+
+        // Проверяем, является ли сообщение командой для работы с файлами
+        val fileCommandResult = fileCommandProcessor.processCommand(message)
+        if (fileCommandResult.handled) {
+            Log.d(TAG, "📁 Сообщение обработано как файловая команда")
+            
+            val responseText = if (fileCommandResult.error != null) {
+                "❌ ${fileCommandResult.error}"
+            } else {
+                fileCommandResult.response ?: "Команда выполнена"
+            }
+            
+            return AgentResponse(
+                text = responseText,
+                responseTimeMs = 0,
+                tokenCount = 0
+            )
+        }
 
         // Создаем сообщение пользователя (без сохранения в БД на главном потоке)
         val userMessageId = UUID.randomUUID().toString()

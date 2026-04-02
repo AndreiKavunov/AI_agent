@@ -44,11 +44,13 @@ data class CallToolRequest(
 
 /**
  * Response from /call_tool endpoint
+ * Note: For some tools, the server returns the specific response type directly,
+ * not wrapped in this structure. We use JsonElement to handle both cases.
  */
 @Serializable
 data class CallToolResponse(
     val success: Boolean,
-    val result: String,
-    val tool: String,
+    val result: JsonElement = kotlinx.serialization.json.buildJsonObject { },
+    val tool: String? = null,
     val error: String? = null
 )

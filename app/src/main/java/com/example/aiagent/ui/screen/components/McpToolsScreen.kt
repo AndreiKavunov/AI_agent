@@ -25,6 +25,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.util.Log
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonElement
+
+/**
+ * Helper function to extract string from JsonElement
+ */
+fun extractStringFromJsonElement(element: JsonElement): String {
+    return when (element) {
+        is JsonPrimitive -> element.content
+        else -> element.toString()
+    }
+}
 
 /**
  * Simple screen to display MCP tools from the server
@@ -87,7 +99,8 @@ fun McpToolsScreen() {
                     repository.callTool(toolName)
                 }
                 toolResult = response
-                Log.d("McpToolsScreen", "Tool $toolName result: ${response.result}")
+                val resultString = extractStringFromJsonElement(response.result)
+                Log.d("McpToolsScreen", "Tool $toolName result: $resultString")
             } catch (e: Exception) {
                 errorMessage = "Error calling tool: ${e.message}"
                 Log.e("McpToolsScreen", "Failed to call tool $toolName", e)
@@ -271,7 +284,9 @@ fun McpToolsScreen() {
                                 modifier = Modifier.padding(top = 4.dp)
                             )
                             Text(
-                                text = if (result.success) result.result else result.error ?: "Unknown error",
+                                text = if (result.success) {
+                                    extractStringFromJsonElement(result.result)
+                                } else result.error ?: "Unknown error",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = if (result.success)
                                     MaterialTheme.colorScheme.onSecondaryContainer

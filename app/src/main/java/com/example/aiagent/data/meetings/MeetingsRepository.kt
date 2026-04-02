@@ -2,6 +2,7 @@ package com.example.aiagent.data.meetings
 
 import android.util.Log
 import com.example.aiagent.data.mcp.McpRepository
+import kotlinx.serialization.json.JsonElement
 
 class MeetingsRepository {
     
@@ -28,12 +29,14 @@ class MeetingsRepository {
             Log.d(tag, "Result: ${response.result}")
             Log.d(tag, "Error: ${response.error}")
             
-            if (response.success && response.result != null) {
+            if (response.success) {
+                // Extract string from JsonElement
+                val meetingsString = extractStringFromJsonElement(response.result)
                 Log.d(tag, "✓ Meetings fetched successfully")
-                Log.d(tag, "Meetings data: ${response.result}")
+                Log.d(tag, "Meetings data: $meetingsString")
                 Result.success(
                     MeetingsData(
-                        meetings = response.result
+                        meetings = meetingsString
                     )
                 )
             } else {
@@ -72,10 +75,12 @@ class MeetingsRepository {
             Log.d(tag, "Result: ${response.result}")
             Log.d(tag, "Error: ${response.error}")
             
-            if (response.success && response.result != null) {
+            if (response.success) {
+                // Extract string from JsonElement
+                val todosString = extractStringFromJsonElement(response.result)
                 Log.d(tag, "✓ Todos fetched successfully")
-                Log.d(tag, "Todos data: ${response.result}")
-                Result.success(response.result)
+                Log.d(tag, "Todos data: $todosString")
+                Result.success(todosString)
             } else {
                 val errorMsg = response.error ?: "Unknown error"
                 Log.e(tag, "✗ Failed to fetch todos: $errorMsg")
@@ -168,5 +173,15 @@ class MeetingsRepository {
     fun close() {
         mcpRepository.close()
         todosMcpRepository.close()
+    }
+    
+    /**
+     * Извлекает строку из JsonElement
+     */
+    private fun extractStringFromJsonElement(element: JsonElement): String {
+        return when (element) {
+            is kotlinx.serialization.json.JsonPrimitive -> element.content
+            else -> element.toString()
+        }
     }
 }
